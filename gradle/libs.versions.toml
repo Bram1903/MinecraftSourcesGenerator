@@ -1,0 +1,14 @@
+[versions]
+gson = "2.14.0"
+tiny-remapper = "0.14.0"
+mapping-io = "0.8.0"
+vineflower = "1.12.0"
+asm = "9.10.1"
+
+[libraries]
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+tiny-remapper = { module = "net.fabricmc:tiny-remapper", version.ref = "tiny-remapper" }
+mapping-io = { module = "net.fabricmc:mapping-io", version.ref = "mapping-io" }
+vineflower = { module = "org.vineflower:vineflower", version.ref = "vineflower" }
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-tree = { module = "org.ow2.asm:asm-tree", version.ref = "asm" }
