@@ -13,6 +13,7 @@ import com.deathmotion.mcsources.mapping.MappingTier;
 import com.deathmotion.mcsources.pipeline.GenerationOutcome;
 import com.deathmotion.mcsources.pipeline.GenerationResult;
 import com.deathmotion.mcsources.pipeline.GenerationSummary;
+import com.deathmotion.mcsources.pipeline.ProgressTracker;
 import com.deathmotion.mcsources.pipeline.SourceGenerator;
 import com.deathmotion.mcsources.util.PathUtils;
 import com.google.gson.JsonObject;
@@ -124,7 +125,8 @@ public final class Main {
                 System.exit(3);
                 return;
             }
-            GenerationResult result = new SourceGenerator(config, manifest).generate(version);
+            GenerationResult result = new SourceGenerator(config, manifest).generate(version,
+                    phase -> System.out.println("[" + id + "] " + phase.label()));
             if (result.outcome() == GenerationOutcome.FAILED) {
                 System.exit(1);
                 return;
@@ -169,6 +171,7 @@ public final class Main {
         System.out.println();
 
         SourceGenerator generator = new SourceGenerator(config, manifest);
+        ProgressTracker tracker = new ProgressTracker();
         long start = System.nanoTime();
         int total = versions.size();
         AtomicInteger completed = new AtomicInteger();
@@ -187,7 +190,10 @@ public final class Main {
                 return;
             }
             long elapsed = (System.nanoTime() - start) / 1_000_000_000L;
-            System.out.printf("[status] %ds elapsed, %d/%d done, %d running%n", elapsed, done, total, inProgress.get());
+            String summary = tracker.summary();
+            String detail = summary.isEmpty() ? "" : " | " + summary;
+            System.out.printf("[status] %ds elapsed, %d/%d done, %d running%s%n",
+                    elapsed, done, total, inProgress.get(), detail);
         }, HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS);
 
         ExecutorService pool = Executors.newFixedThreadPool(options.jobs());
@@ -197,10 +203,12 @@ public final class Main {
                 Callable<GenerationResult> task = () -> {
                     inProgress.incrementAndGet();
                     try {
-                        GenerationResult result = generator.generate(version);
+                        GenerationResult result =
+                                generator.generate(version, phase -> tracker.enter(version.id(), phase));
                         reportProgress(completed.incrementAndGet(), total, start, result);
                         return result;
                     } finally {
+                        tracker.finish(version.id());
                         inProgress.decrementAndGet();
                     }
                 };

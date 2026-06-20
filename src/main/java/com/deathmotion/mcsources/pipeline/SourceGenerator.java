@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public final class SourceGenerator {
     private static final String MARKER_FILE = ".mcsg-done";
@@ -90,7 +91,7 @@ public final class SourceGenerator {
         System.out.println("[" + id + "] " + message);
     }
 
-    public GenerationResult generate(MinecraftVersion version) {
+    public GenerationResult generate(MinecraftVersion version, Consumer<Phase> onPhase) {
         long start = System.nanoTime();
         String id = version.id();
         Path outputDir = config.sourcesDir().resolve(id);
@@ -108,6 +109,7 @@ public final class SourceGenerator {
             JsonObject metadata = manifest.metadata(version);
             JsonObject downloads = metadata.getAsJsonObject("downloads");
 
+            onPhase.accept(Phase.MAPPINGS);
             ResolvedMappings mappings = MappingResolver.resolve(metadata, id, scratch);
 
             Path parchmentJson = null;
@@ -118,6 +120,7 @@ public final class SourceGenerator {
                 }
             }
 
+            onPhase.accept(Phase.DOWNLOAD);
             List<Path> libraries = LibraryDownloader.resolve(metadata, config.librariesDir());
 
             Path clientJar = Downloader.download(
@@ -129,6 +132,7 @@ public final class SourceGenerator {
                 serverJar = ServerBundle.extractServerJar(rawServer, scratch.resolve("server-extracted.jar"));
             }
 
+            onPhase.accept(Phase.REMAP);
             int remapThreads = config.decompilerThreads();
             Path clientNamed = scratch.resolve("client-named.jar");
             JarRemapper.remap(clientJar, clientNamed, mappings.clientTree(), libraries, remapThreads);
@@ -138,15 +142,18 @@ public final class SourceGenerator {
                 JarRemapper.remap(serverJar, serverNamed, mappings.serverTree(), libraries, remapThreads);
             }
 
+            onPhase.accept(Phase.MERGE);
             Path merged = scratch.resolve("minecraft.jar");
             int classes = JarAssembler.assemble(clientNamed, serverNamed, mappings.namedClasses(), merged);
 
+            onPhase.accept(Phase.TRANSFORM);
             ParameterAnnotationFixer.apply(merged);
 
             if (mappings.tier() == MappingTier.MOJMAP) {
                 ParameterNameInjector.apply(merged, parchmentJson != null ? ParchmentData.load(parchmentJson) : null);
             }
 
+            onPhase.accept(Phase.DECOMPILE);
             String javadocSpec = javadocSpec(parchmentJson, mappings.javadocTiny());
             Path staging = scratch.resolve("decompiled");
             Path log = scratch.resolve("vineflower.log");
@@ -157,6 +164,7 @@ public final class SourceGenerator {
                 decompiler.decompile(merged, staging, libraries, log, javadocSpec);
             }
 
+            onPhase.accept(Phase.WRITE);
             PathUtils.deleteRecursively(outputDir);
             Files.createDirectories(outputDir.getParent());
             Files.move(staging, outputDir);
