@@ -1,6 +1,9 @@
 package com.deathmotion.mcsources.diff;
 
+import com.deathmotion.mcsources.classfile.InternalNames;
 import com.deathmotion.mcsources.diff.JarComparison.ClassRename;
+
+import com.deathmotion.mcsources.pipeline.SourceTree;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -13,20 +16,20 @@ import java.util.stream.Stream;
 
 public record SourceComparison(boolean available, Map<String, List<String>> diffs, List<String> textOnly) {
 
-    private static final String MARKER = ".mcsg-done";
-
-    static SourceComparison compare(Path beforeRoot, Path afterRoot, JarComparison classes) throws IOException {
-        if (!Files.exists(beforeRoot.resolve(MARKER)) || !Files.exists(afterRoot.resolve(MARKER))) {
+    static SourceComparison compare(SourceTree tree, String older, String newer, JarComparison classes)
+            throws IOException {
+        if (!tree.isCurrent(older) || !tree.isCurrent(newer)) {
             return new SourceComparison(false, Map.of(), List.of());
         }
-
+        Path beforeRoot = tree.directory(older);
+        Path afterRoot = tree.directory(newer);
         Map<String, String> pairs = new TreeMap<>();
         classes.changed().forEach(change -> {
-            String topLevel = ClassNames.topLevel(change.name());
+            String topLevel = InternalNames.topLevel(change.name());
             pairs.put(topLevel, topLevel);
         });
         for (ClassRename rename : classes.renamed()) {
-            pairs.putIfAbsent(ClassNames.topLevel(rename.to()), ClassNames.topLevel(rename.from()));
+            pairs.putIfAbsent(InternalNames.topLevel(rename.to()), InternalNames.topLevel(rename.from()));
         }
 
         Map<String, List<String>> diffs = new ConcurrentSkipListMap<>();

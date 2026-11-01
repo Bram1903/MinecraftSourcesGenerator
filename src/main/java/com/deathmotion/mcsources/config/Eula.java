@@ -5,7 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public final class Eula {
-    public static final String EULA_URL = "https://aka.ms/MinecraftEULA";
+    private static final String EULA_URL = "https://aka.ms/MinecraftEULA";
 
     private static final String FILE_NAME = "eula.txt";
     private static final String HEADER = """

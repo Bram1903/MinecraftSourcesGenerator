@@ -5,23 +5,17 @@ import java.nio.file.Path;
 public record GeneratorConfig(Path sourcesDir,
                               Path workDir,
                               boolean force,
-                              boolean keepWork,
                               boolean cacheEnabled,
                               boolean resetCache,
-                              String vineflowerHeap,
-                              int decompilerThreads,
                               boolean serverReports) {
 
-    public static GeneratorConfig fromSystemProperties(RunOptions options) {
+    public static GeneratorConfig fromSystemProperties() {
         return new GeneratorConfig(
                 requiredPath("sourcesDir"),
                 requiredPath("workDir"),
                 GeneratorProperties.flag("force"),
-                GeneratorProperties.flag("keepWork"),
                 !GeneratorProperties.flag("noCache"),
                 GeneratorProperties.flag("resetCache"),
-                options.decompilerHeap(),
-                options.decompilerThreads(),
                 !GeneratorProperties.flag("noReports"));
     }
 
@@ -31,11 +25,6 @@ public record GeneratorConfig(Path sourcesDir,
             throw new IllegalStateException("Missing required system property mcsg." + key);
         }
         return Path.of(value);
-    }
-
-    public GeneratorConfig withDecompilerThreads(int threads) {
-        return new GeneratorConfig(sourcesDir, workDir, force, keepWork, cacheEnabled, resetCache, vineflowerHeap,
-                threads, serverReports);
     }
 
     public Path cacheDir() {
@@ -50,12 +39,12 @@ public record GeneratorConfig(Path sourcesDir,
         return workDir.resolve("libs");
     }
 
-    public Path scratchDir(String versionId) {
-        return workDir.resolve("tmp").resolve(versionId);
+    public Path downloadsDir(String versionId) {
+        return workDir.resolve("downloads").resolve(versionId);
     }
 
-    public Path jarsDir(String versionId) {
-        return workDir.resolve("jars").resolve(versionId);
+    public Path logsDir() {
+        return workDir.resolve("logs");
     }
 
     public Path reportsDir(String versionId) {

@@ -1,5 +1,6 @@
 package com.deathmotion.mcsources.diff;
 
+import com.deathmotion.mcsources.classfile.InternalNames;
 import com.deathmotion.mcsources.diff.ClassShape.FieldShape;
 import com.deathmotion.mcsources.diff.ClassShape.MethodShape;
 import com.deathmotion.mcsources.diff.MemberChange.Change;
@@ -80,7 +81,7 @@ public record JarComparison(int classesBefore,
     private static Map<String, List<Long>> anonymousByTopLevel(Map<String, ClassShape> shapes) {
         Map<String, List<Long>> grouped = new HashMap<>();
         shapes.values().stream().filter(shape -> ClassNames.isAnonymous(shape.name())).forEach(shape ->
-                grouped.computeIfAbsent(ClassNames.topLevel(shape.name()), key -> new ArrayList<>())
+                grouped.computeIfAbsent(InternalNames.topLevel(shape.name()), key -> new ArrayList<>())
                         .add(shape.fingerprint()));
         grouped.values().forEach(Collections::sort);
         return grouped;

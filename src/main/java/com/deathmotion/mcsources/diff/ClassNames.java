@@ -14,11 +14,6 @@ final class ClassNames {
     private ClassNames() {
     }
 
-    static String topLevel(String internalName) {
-        int dollar = internalName.indexOf('$');
-        return dollar < 0 ? internalName : internalName.substring(0, dollar);
-    }
-
     static boolean isAnonymous(String internalName) {
         return ANONYMOUS_SEGMENT.matcher(internalName).find();
     }

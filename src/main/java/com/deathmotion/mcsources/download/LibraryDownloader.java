@@ -39,6 +39,10 @@ public final class LibraryDownloader {
                     sha1 = artifact.has("sha1") ? artifact.get("sha1").getAsString() : null;
                 }
             }
+            boolean nativesOnly = relativePath == null && library.has("natives");
+            if (nativesOnly) {
+                continue;
+            }
             if ((relativePath == null || url == null || url.isEmpty()) && !name.isEmpty()) {
                 relativePath = toMavenPath(name);
                 if (relativePath != null) {

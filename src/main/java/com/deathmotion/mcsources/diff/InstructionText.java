@@ -1,5 +1,6 @@
 package com.deathmotion.mcsources.diff;
 
+import com.deathmotion.mcsources.classfile.InternalNames;
 import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Opcodes;
@@ -26,7 +27,7 @@ final class InstructionText {
 
     InstructionText(ClassNode owner) {
         this.owner = owner;
-        this.topLevel = ClassNames.topLevel(owner.name);
+        this.topLevel = InternalNames.topLevel(owner.name);
         for (MethodNode method : owner.methods) {
             if (ClassNames.isLambda(method)) {
                 lambdas.put(method.name + method.desc, method);

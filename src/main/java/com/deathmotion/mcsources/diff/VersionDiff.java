@@ -4,13 +4,12 @@ import com.deathmotion.mcsources.config.GeneratorConfig;
 import com.deathmotion.mcsources.diff.ResourceIndex.Resource;
 import com.deathmotion.mcsources.manifest.MinecraftVersion;
 import com.deathmotion.mcsources.manifest.VersionManifest;
-import com.deathmotion.mcsources.mapping.MappingResolver;
-import com.deathmotion.mcsources.mapping.ResolvedMappings;
-import com.deathmotion.mcsources.pipeline.VersionJars;
-import com.deathmotion.mcsources.util.PathUtils;
-import com.google.gson.JsonObject;
+import com.deathmotion.mcsources.io.Directories;
+import com.deathmotion.mcsources.pipeline.SourceTree;
+import com.deathmotion.mcsources.version.AssembledVersion;
+import com.deathmotion.mcsources.version.GameJars;
+import com.deathmotion.mcsources.version.VersionPreparer;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
@@ -48,11 +47,11 @@ public final class VersionDiff {
         }
 
         log.accept("comparing decompiled sources");
-        SourceComparison sources = SourceComparison.compare(config.sourcesDir().resolve(older.id()),
-                config.sourcesDir().resolve(newer.id()), classes);
+        SourceComparison sources = SourceComparison.compare(new SourceTree(config.sourcesDir()), older.id(),
+                newer.id(), classes);
 
         Path output = config.diffsDir().resolve(older.id() + ".." + newer.id());
-        PathUtils.deleteRecursively(output);
+        Directories.deleteRecursively(output);
         log.accept("writing " + output);
         new DiffReport(output, older.id(), newer.id(), before.resources(), after.resources())
                 .write(classes, resources, reports, sources);
@@ -61,15 +60,12 @@ public final class VersionDiff {
 
     private Snapshot snapshot(MinecraftVersion version, Consumer<String> log) throws Exception {
         String id = version.id();
-        Path directory = config.jarsDir(id);
-        Files.createDirectories(directory);
-        JsonObject metadata = manifest.metadata(version);
-        ResolvedMappings mappings = MappingResolver.resolve(metadata, id, directory);
-        VersionJars jars = VersionJars.assemble(config, metadata, mappings, directory,
-                phase -> log.accept("[" + id + "] " + phase.label()));
+        log.accept("[" + id + "] assembling classes");
+        AssembledVersion assembled = new VersionPreparer(config, manifest).assemble(version);
+        GameJars jars = assembled.jars();
 
         log.accept("[" + id + "] indexing classes and resources");
-        ClassIndex classes = ClassIndex.read(jars.merged());
+        ClassIndex classes = ClassIndex.of(assembled.classes());
         ResourceIndex resources = ResourceIndex.fromJars(
                 Stream.of(jars.client(), jars.server()).filter(Objects::nonNull).toList());
 

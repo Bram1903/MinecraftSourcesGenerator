@@ -2,22 +2,18 @@ package com.deathmotion.mcsources.pipeline;
 
 import com.deathmotion.mcsources.mapping.MappingTier;
 
-public record GenerationResult(String versionId,
-                               GenerationOutcome outcome,
-                               MappingTier tier,
-                               int javaFiles,
-                               long millis,
+public record GenerationResult(String versionId, GenerationOutcome outcome, MappingTier tier, int javaFiles,
                                String error) {
 
-    public static GenerationResult generated(String versionId, MappingTier tier, int javaFiles, long millis) {
-        return new GenerationResult(versionId, GenerationOutcome.GENERATED, tier, javaFiles, millis, null);
+    static GenerationResult generated(String versionId, MappingTier tier, int javaFiles) {
+        return new GenerationResult(versionId, GenerationOutcome.GENERATED, tier, javaFiles, null);
     }
 
-    public static GenerationResult skipped(String versionId) {
-        return new GenerationResult(versionId, GenerationOutcome.SKIPPED, null, 0, 0, null);
+    static GenerationResult skipped(String versionId) {
+        return new GenerationResult(versionId, GenerationOutcome.SKIPPED, null, 0, null);
     }
 
-    public static GenerationResult failed(String versionId, String error, long millis) {
-        return new GenerationResult(versionId, GenerationOutcome.FAILED, null, 0, millis, error);
+    static GenerationResult failed(String versionId, String error) {
+        return new GenerationResult(versionId, GenerationOutcome.FAILED, null, 0, error);
     }
 }

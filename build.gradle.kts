@@ -1,3 +1,6 @@
+import com.sun.management.OperatingSystemMXBean
+import java.lang.management.ManagementFactory
+
 plugins {
     java
 }
@@ -59,16 +62,23 @@ val versionProperties: Map<String, String> = run {
 
 fun versionProperty(name: String): String = versionProperties[name] ?: "<unset>"
 
+val generatorHeap: String = (findProperty("maxHeap") as String?) ?: run {
+    val physical = (ManagementFactory.getOperatingSystemMXBean() as? OperatingSystemMXBean)?.totalMemorySize
+        ?: (16L shl 30)
+    "${(physical / 2 shr 30).coerceIn(4L, 96L)}g"
+}
+
 fun JavaExec.configureGenerator() {
     group = "minecraft sources"
     mainClass = "com.deathmotion.mcsources.cli.Main"
     classpath = sourceSets["main"].runtimeClasspath
-    maxHeapSize = "8g"
-    systemProperty("mcsg.sourcesDir", sourcesDir.asFile.absolutePath)
+    maxHeapSize = generatorHeap
+    jvmArgs("-XX:+UseParallelGC")
+    systemProperty("mcsg.sourcesDir",
+        (findProperty("sourcesDir") as String?)?.let { file(it).absolutePath } ?: sourcesDir.asFile.absolutePath)
     systemProperty("mcsg.workDir", workDir.asFile.absolutePath)
     systemProperty("mcsg.projectDir", layout.projectDirectory.asFile.absolutePath)
-    listOf("force", "limit", "jobs", "vfThreads", "snapshots", "keepWork", "vfHeap", "eula",
-            "noCache", "resetCache", "noReports")
+    listOf("force", "limit", "jobs", "vfThreads", "snapshots", "eula", "noCache", "resetCache", "noReports")
         .forEach { key -> (project.findProperty(key) as String?)?.let { systemProperty("mcsg.$key", it) } }
     listOf("from", "to").forEach { key -> versionProperties[key]?.let { systemProperty("mcsg.$key", it) } }
 }
@@ -95,6 +105,12 @@ tasks.register<JavaExec>("diffVersions") {
     description = "Compare two versions class by class and member by member, with resources, server reports and source diffs. Usage: ./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true"
     configureGenerator()
     args("diff", versionProperty("old"), versionProperty("new"))
+}
+
+tasks.register<JavaExec>("verifySources") {
+    description = "Prove generated sources equal a full, uncached decompile. Usage: ./gradlew verifySources -Pmc=1.21.4 (or a from-to range)"
+    configureGenerator()
+    args("verify", versionProperty("mc"))
 }
 
 tasks.register<JavaExec>("ide") {

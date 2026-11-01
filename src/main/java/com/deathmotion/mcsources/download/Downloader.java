@@ -1,6 +1,6 @@
 package com.deathmotion.mcsources.download;
 
-import com.deathmotion.mcsources.util.Hashing;
+import com.deathmotion.mcsources.io.Hashing;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 

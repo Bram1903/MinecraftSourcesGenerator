@@ -1,6 +1,6 @@
 package com.deathmotion.mcsources.diff;
 
-import com.deathmotion.mcsources.util.PathUtils;
+import com.deathmotion.mcsources.io.Directories;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,7 +19,7 @@ final class ServerReports {
         if (Files.exists(directory.resolve(DONE_MARKER)) && Files.isDirectory(reports)) {
             return reports;
         }
-        PathUtils.deleteRecursively(directory);
+        Directories.deleteRecursively(directory);
         Files.createDirectories(directory);
 
         Path log = directory.resolve("datagen.log");

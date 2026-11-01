@@ -14,8 +14,4 @@ public record ResolvedMappings(MappingTier tier,
 
     public static final String OBFUSCATED_NAMESPACE = "official";
     public static final String NAMED_NAMESPACE = "named";
-
-    public boolean requiresRemapping() {
-        return tier != MappingTier.VANILLA;
-    }
 }

@@ -1,0 +1,113 @@
+package com.deathmotion.mcsources.version.transform;
+
+import com.deathmotion.mcsources.mapping.parchment.ParchmentData;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.*;
+
+import javax.lang.model.SourceVersion;
+
+import java.util.*;
+
+final class ParameterNameInjector {
+    private static final Map<String, String> KEYWORD_REPLACEMENTS = Map.of(
+            "class", "clazz",
+            "boolean", "obool",
+            "byte", "obyte",
+            "short", "oshort",
+            "long", "olong",
+            "float", "f",
+            "double", "d");
+
+    private ParameterNameInjector() {
+    }
+
+    static byte[] inject(byte[] classBytes, ParchmentData parchment) {
+        ClassReader reader = new ClassReader(classBytes);
+        ClassNode node = new ClassNode();
+        reader.accept(node, 0);
+
+        for (MethodNode method : node.methods) {
+            method.localVariables = null;
+            Type[] arguments = Type.getArgumentTypes(method.desc);
+            if (arguments.length == 0) {
+                continue;
+            }
+
+            Map<Integer, String> parchmentNames = parchment == null
+                    ? Map.of()
+                    : parchment.parameterNames(node.name, method.name, method.desc);
+            boolean hasBody = method.instructions != null && method.instructions.size() > 0;
+
+            List<LocalVariableNode> locals = new ArrayList<>();
+            List<ParameterNode> parameters = new ArrayList<>();
+            LabelNode start = new LabelNode();
+            LabelNode end = new LabelNode();
+            Set<String> used = new HashSet<>(parchmentNames.values());
+            int localIndex = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
+
+            for (Type argument : arguments) {
+                String name = parchmentNames.get(localIndex);
+                if (name == null) {
+                    name = generateName(argument, used);
+                }
+                used.add(name);
+                parameters.add(new ParameterNode(name, 0));
+                if (hasBody) {
+                    locals.add(new LocalVariableNode(name, argument.getDescriptor(), null, start, end, localIndex));
+                }
+                localIndex += argument.getSize();
+            }
+
+            method.parameters = parameters;
+            if (hasBody) {
+                method.instructions.insert(start);
+                method.instructions.add(end);
+                method.localVariables = locals;
+            }
+        }
+
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static String generateName(Type type, Set<String> used) {
+        String base = legalIdentifier(baseName(type));
+        String name = base;
+        int suffix = 1;
+        while (used.contains(name)) {
+            name = base + (++suffix);
+        }
+        return name;
+    }
+
+    private static String legalIdentifier(String name) {
+        if (!SourceVersion.isKeyword(name)) {
+            return name;
+        }
+        return KEYWORD_REPLACEMENTS.getOrDefault(name, "o" + name);
+    }
+
+    private static String baseName(Type type) {
+        return switch (type.getSort()) {
+            case Type.BOOLEAN -> "flag";
+            case Type.BYTE -> "b";
+            case Type.CHAR -> "c";
+            case Type.SHORT -> "s";
+            case Type.INT -> "i";
+            case Type.LONG -> "l";
+            case Type.FLOAT -> "f";
+            case Type.DOUBLE -> "d";
+            case Type.ARRAY -> baseName(type.getElementType()) + "s";
+            case Type.OBJECT -> {
+                String className = type.getClassName();
+                String simple = className.substring(className.lastIndexOf('.') + 1).replace('$', '_');
+                yield simple.toLowerCase();
+            }
+            default -> "value";
+        };
+    }
+}
