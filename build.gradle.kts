@@ -16,8 +16,18 @@ dependencies {
     implementation(libs.mapping.io)
     implementation(libs.asm)
     implementation(libs.asm.tree)
+    implementation(libs.asm.commons)
     implementation(libs.vineflower)
     implementation(libs.java.diff.utils)
+}
+
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.ow2.asm") {
+            useVersion(libs.versions.asm.get())
+            because("every ASM module must match, tiny-remapper brings older ones")
+        }
+    }
 }
 
 java {
