@@ -38,21 +38,30 @@ public final class Main {
             return;
         }
 
-        RunOptions options = RunOptions.fromSystemProperties();
-        GeneratorConfig config = GeneratorConfig.fromSystemProperties(options.decompilerThreads());
-        VersionManifest manifest = new VersionManifest(config.cacheDir());
-
-        switch (args[0]) {
-            case "list" -> listVersions(manifest, options);
-            case "one" -> generate(config, manifest, options, args);
-            case "all" -> generateAll(config, manifest, options);
-            case "ide" -> ide(config, manifest, args);
-            case "diff" -> diff(config, manifest, args);
-            default -> {
-                System.err.println("Unknown mode: " + args[0]);
-                System.exit(2);
+        Runtime.getRuntime().addShutdownHook(new Thread(Main::stopChildProcesses, "mcsg-shutdown"));
+        try {
+            RunOptions options = RunOptions.fromSystemProperties();
+            GeneratorConfig config = GeneratorConfig.fromSystemProperties(options);
+            VersionManifest manifest = new VersionManifest(config.cacheDir());
+            switch (args[0]) {
+                case "list" -> listVersions(manifest, options);
+                case "one" -> generate(config, manifest, options, args);
+                case "all" -> generateAll(config, manifest, options);
+                case "ide" -> ide(config, manifest, options, args);
+                case "diff" -> diff(config, manifest, args);
+                default -> {
+                    System.err.println("Unknown mode: " + args[0]);
+                    System.exit(2);
+                }
             }
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.exit(2);
         }
+    }
+
+    private static void stopChildProcesses() {
+        ProcessHandle.current().descendants().forEach(ProcessHandle::destroyForcibly);
     }
 
     private static void listVersions(VersionManifest manifest, RunOptions options) throws Exception {
@@ -91,13 +100,15 @@ public final class Main {
 
     private static List<MinecraftVersion> resolveSelection(String spec, VersionManifest manifest, RunOptions options)
             throws Exception {
-        int dash = spec.indexOf('-');
-        if (dash > 0 && dash < spec.length() - 1) {
-            List<MinecraftVersion> inRange = manifest.versionsSinceBaseline(options.includeSnapshots());
-            int low = indexOfId(inRange, spec.substring(0, dash));
-            int high = indexOfId(inRange, spec.substring(dash + 1));
+        List<MinecraftVersion> candidates = manifest.versionsSinceBaseline(options.includeSnapshots());
+        if (indexOfId(candidates, spec) >= 0 || !spec.contains("-")) {
+            return List.of(manifest.find(spec));
+        }
+        for (int dash = spec.indexOf('-'); dash > 0; dash = spec.indexOf('-', dash + 1)) {
+            int low = indexOfId(candidates, spec.substring(0, dash));
+            int high = indexOfId(candidates, spec.substring(dash + 1));
             if (low >= 0 && high >= 0) {
-                return new ArrayList<>(inRange.subList(Math.min(low, high), Math.max(low, high) + 1));
+                return new ArrayList<>(candidates.subList(Math.min(low, high), Math.max(low, high) + 1));
             }
         }
         return List.of(manifest.find(spec));
@@ -112,7 +123,8 @@ public final class Main {
         return -1;
     }
 
-    private static void ide(GeneratorConfig config, VersionManifest manifest, String[] args) throws Exception {
+    private static void ide(GeneratorConfig config, VersionManifest manifest, RunOptions options, String[] args)
+            throws Exception {
         if (args.length < 2 || args[1].isBlank() || args[1].equals("<unset>")) {
             System.err.println("Usage: ./gradlew ide -Pmc=<version>   (e.g. -Pmc=1.21.8)");
             System.exit(2);
@@ -127,7 +139,8 @@ public final class Main {
                 System.exit(3);
                 return;
             }
-            GenerationResult result = new SourceGenerator(config, manifest).generate(version,
+            GeneratorConfig single = config.withDecompilerThreads(options.sizedFor(1).decompilerThreads());
+            GenerationResult result = new SourceGenerator(single, manifest).generate(version,
                     phase -> System.out.println("[" + id + "] " + phase.label()));
             if (result.outcome() == GenerationOutcome.FAILED) {
                 System.exit(1);
@@ -136,7 +149,7 @@ public final class Main {
         }
 
         List<Path> libraries = LibraryDownloader.resolve(manifest.metadata(version), config.librariesDir());
-        Path workspace = config.sourcesDir().resolveSibling("workspace").toAbsolutePath();
+        Path workspace = config.workspaceDir().toAbsolutePath();
         IdeWorkspace.write(workspace, id, sources, libraries);
 
         System.out.println();
@@ -175,13 +188,18 @@ public final class Main {
         }
         List<MinecraftVersion> versions =
                 largestFirst(select(manifest.versionsSinceBaseline(options.includeSnapshots()), options), manifest);
-        runGeneration(config, manifest, options, versions);
+        List<GenerationResult> results = runGeneration(config, manifest, options, versions);
+        if (results.stream().anyMatch(result -> result.outcome() == GenerationOutcome.FAILED)) {
+            System.exit(1);
+        }
     }
 
-    private static List<GenerationResult> runGeneration(GeneratorConfig config, VersionManifest manifest,
-                                                        RunOptions options, List<MinecraftVersion> versions)
+    private static List<GenerationResult> runGeneration(GeneratorConfig baseConfig, VersionManifest manifest,
+                                                        RunOptions requested, List<MinecraftVersion> versions)
             throws Exception {
-        if (System.getProperty("mcsg.resetCache") != null && config.cacheEnabled()) {
+        RunOptions options = requested.sizedFor(versions.size());
+        GeneratorConfig config = baseConfig.withDecompilerThreads(options.decompilerThreads());
+        if (config.resetCache() && config.cacheEnabled()) {
             PathUtils.deleteRecursively(config.decompileCacheDir());
             System.out.println("Decompile cache reset.");
         }
@@ -246,23 +264,25 @@ public final class Main {
     }
 
     private static List<MinecraftVersion> select(List<MinecraftVersion> versions, RunOptions options) {
-        List<MinecraftVersion> selected = new ArrayList<>();
-        boolean active = options.from() == null;
-        for (MinecraftVersion version : versions) {
-            if (!active && version.id().equals(options.from())) {
-                active = true;
-            }
-            if (active) {
-                selected.add(version);
-            }
-            if (options.to() != null && version.id().equals(options.to())) {
-                break;
-            }
+        int from = options.from() == null ? 0 : requireIndex(versions, options.from(), "-Pfrom");
+        int to = options.to() == null ? versions.size() - 1 : requireIndex(versions, options.to(), "-Pto");
+        if (from > to) {
+            throw new IllegalArgumentException("-Pfrom=" + options.from() + " is newer than -Pto=" + options.to());
         }
+        List<MinecraftVersion> selected = versions.subList(from, to + 1);
         if (options.limit() >= 0 && selected.size() > options.limit()) {
             return selected.subList(0, options.limit());
         }
         return selected;
+    }
+
+    private static int requireIndex(List<MinecraftVersion> versions, String id, String flag) {
+        int index = indexOfId(versions, id);
+        if (index < 0) {
+            throw new IllegalArgumentException(flag + "=" + id + " is not a known version"
+                    + " (pass -Psnapshots to include snapshots, run ./gradlew listVersions for the list)");
+        }
+        return index;
     }
 
     private static void reportProgress(int done, int total, long startNanos, GenerationResult result) {

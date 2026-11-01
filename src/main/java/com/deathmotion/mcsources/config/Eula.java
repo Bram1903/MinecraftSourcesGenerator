@@ -24,9 +24,8 @@ public final class Eula {
     }
 
     public static Eula fromSystemProperties() {
-        Path projectDir = Path.of(System.getProperty("mcsg.projectDir", "."));
-        boolean acceptedViaFlag = Boolean.parseBoolean(System.getProperty("mcsg.eula", "false"));
-        return new Eula(projectDir, acceptedViaFlag);
+        Path projectDir = Path.of(GeneratorProperties.text("projectDir", "."));
+        return new Eula(projectDir, GeneratorProperties.flag("eula"));
     }
 
     public boolean ensureAccepted() throws IOException {

@@ -27,7 +27,8 @@ public final class VersionManifest {
         return versions.stream()
                 .filter(version -> version.id().equals(id))
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Version " + id + " not found in manifest"));
+                .orElseThrow(() -> new IllegalArgumentException("Minecraft version '" + id + "' is not in Mojang's "
+                        + "version manifest. Run ./gradlew listVersions for the valid ids."));
     }
 
     public List<MinecraftVersion> versionsSinceBaseline(boolean includeSnapshots) throws IOException {

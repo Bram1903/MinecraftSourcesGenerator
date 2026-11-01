@@ -7,33 +7,35 @@ public record GeneratorConfig(Path sourcesDir,
                               boolean force,
                               boolean keepWork,
                               boolean cacheEnabled,
+                              boolean resetCache,
                               String vineflowerHeap,
                               int decompilerThreads,
                               boolean serverReports) {
 
-    public static GeneratorConfig fromSystemProperties(int decompilerThreads) {
+    public static GeneratorConfig fromSystemProperties(RunOptions options) {
         return new GeneratorConfig(
-                requiredPath("mcsg.sourcesDir"),
-                requiredPath("mcsg.workDir"),
-                flag("mcsg.force"),
-                flag("mcsg.keepWork"),
-                !flag("mcsg.noCache"),
-                System.getProperty("mcsg.vfHeap", "4g"),
-                decompilerThreads,
-                !flag("mcsg.noReports"));
+                requiredPath("sourcesDir"),
+                requiredPath("workDir"),
+                GeneratorProperties.flag("force"),
+                GeneratorProperties.flag("keepWork"),
+                !GeneratorProperties.flag("noCache"),
+                GeneratorProperties.flag("resetCache"),
+                options.decompilerHeap(),
+                options.decompilerThreads(),
+                !GeneratorProperties.flag("noReports"));
     }
 
     private static Path requiredPath(String key) {
-        String value = System.getProperty(key);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Missing required system property " + key);
+        String value = GeneratorProperties.text(key);
+        if (value == null) {
+            throw new IllegalStateException("Missing required system property mcsg." + key);
         }
         return Path.of(value);
     }
 
-    private static boolean flag(String key) {
-        String value = System.getProperty(key);
-        return value != null && (value.isEmpty() || value.equals("1") || Boolean.parseBoolean(value));
+    public GeneratorConfig withDecompilerThreads(int threads) {
+        return new GeneratorConfig(sourcesDir, workDir, force, keepWork, cacheEnabled, resetCache, vineflowerHeap,
+                threads, serverReports);
     }
 
     public Path cacheDir() {
@@ -62,5 +64,9 @@ public record GeneratorConfig(Path sourcesDir,
 
     public Path diffsDir() {
         return sourcesDir.resolveSibling("diffs");
+    }
+
+    public Path workspaceDir() {
+        return sourcesDir.resolveSibling("workspace");
     }
 }
