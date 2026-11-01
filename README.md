@@ -1,140 +1,187 @@
 # Minecraft Sources Generator
 
-Generates readable, decompiled Minecraft: Java Edition source code for every release since 1.7.2 into
-`sources/<version>/`, one directory per version. There is no upper bound. When a new release ships, run
-`generateAll` again and it is picked up automatically. Pure JVM, no Fabric or Loom required.
+Generates readable, decompiled Minecraft: Java Edition source code for every release since 1.7.2, one directory
+per version under `sources/<version>/`. There is no upper bound: when Mojang ships a release, run `generateAll`
+again and it is picked up. Pure JVM, no Fabric, Loom or Forge toolchain needed.
+
+```bash
+./gradlew generateVersion -Pmc=1.21.8 -Peula=true    # one version
+./gradlew generateAll -Peula=true                    # every release, resumable
+./gradlew ide -Pmc=1.21.8 -Peula=true                # open it in IntelliJ with full navigation
+./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true
+```
+
+On Windows PowerShell, quote the version arguments: `.\gradlew generateVersion "-Pmc=1.21.8" -Peula=true`.
+See [Windows](#windows).
 
 ## Disclaimer
 
-This repository contains only the generator, the tooling that produces the sources. It does not contain, and
-never commits, any Minecraft code, assets, or mappings.
+This repository contains only the generator. It does not contain, and never commits, any Minecraft code, assets
+or mappings.
 
 Mojang permits decompiling Minecraft locally for personal use. The decompiled sources and the mappings used to
 produce them may not be redistributed or published. For that reason:
 
-- The `sources/` output is git-ignored and stays on your machine.
-- Downloaded mappings and jars are cached under `work/`, which is also git-ignored.
-- Running the generator requires accepting the Minecraft EULA (see Usage).
+- `sources/`, `diffs/` and `workspace/` are git-ignored and stay on your machine.
+- Downloads and caches live under `work/`, also git-ignored.
+- Generating requires accepting the Minecraft EULA (see [Accepting the EULA](#accepting-the-minecraft-eula)).
 
-Use the generated code for local, personal study and development only. See the Minecraft Wiki page
-[See Minecraft's code](https://minecraft.wiki/w/Tutorial:See_Minecraft%27s_code) for background.
+Use the generated code for local, personal study and development only. The Minecraft Wiki page
+[See Minecraft's code](https://minecraft.wiki/w/Tutorial:See_Minecraft%27s_code) has background.
 
 ## What it produces
 
 ```
 sources/
 ├── 1.7.2/
-│   └── net/minecraft/...          (.java files)
-├── 1.16.5/
+│   ├── net/minecraft/...          .java files
+│   └── .mcsg-done                 what the version was built from (see below)
+├── 1.21.8/
 │   ├── com/mojang/...
 │   └── net/minecraft/...
-├── 26.2/
-│   ├── com/mojang/...
-│   └── net/minecraft/...
-└── ...                            (every release since 1.7.2, 83 today, about 2 GB)
-    └── .mcsg-done                 (marker with tier, mapping build, file and class counts, timestamp)
+├── 26.3/
+└── ...                            every release since 1.7.2, about 2.2 GB for all of them
 ```
 
-Each version is the merged client and server (client wins on conflict), filtered to genuine Minecraft classes
-so bundled third-party libraries are excluded, then decompiled with
-[Vineflower](https://github.com/Vineflower/vineflower). The vanilla (26.x) output matches the file set that
-Fabric Loom produces.
+Each version is the merged client and server (client wins where both ship a class), filtered to Minecraft's own
+classes so bundled third-party libraries are left out, then decompiled with
+[Vineflower](https://github.com/Vineflower/vineflower). Only `.java` files are written. Assets and data files
+stay in the jars (`diffVersions` compares them).
 
-## Mappings
+`.mcsg-done` records the mapping tier, the mappings and Parchment build, the decompiler, the generator's output
+revision, the class and file counts and the time:
 
-Minecraft was obfuscated for most of its history, so readable names come from different sources per era. The
-tier is chosen automatically per version, with no hard-coded version lists.
+```
+version=1.20
+revision=2
+tier=MOJMAP
+mappings=mojang official
+parchment=2023.09.03 (borrowed from 1.20.1)
+decompiler=vineflower-1.12.0.jar
+classes=7436
+javaFiles=4786
+generatedAt=2026-11-01T16:24:09.701412998Z
+```
 
-| Versions          | Naming source                        | Detection |
-|-------------------|--------------------------------------|-----------|
-| 1.7.2 to 1.14.3   | Ornithe Feather (`mergedv2`)         | published on maven.ornithemc.net (covers every patch release) |
-| 1.14.4 to 1.21.x  | Mojang official mappings (Mojmap)    | version metadata contains `client_mappings` |
-| 26.1 and later    | none, shipped unobfuscated           | no mappings published anywhere, the jars already use real names |
+## Names: mappings, parameters and locals
 
-Since Minecraft 26.1 the game is distributed unobfuscated, so those versions are decompiled straight from the
-jar with no remapping step. Run `./gradlew listVersions` to print the resolved list and the tier chosen for
-each version.
+Minecraft was obfuscated for most of its history, so readable names come from a different source per era. The
+tier is chosen automatically from the version's metadata, with no hard-coded version lists.
 
-On the Mojang-mapped versions, parameter names and javadocs are layered in from
-[Parchment](https://parchmentmc.org/) wherever a release exists for that version (currently 1.16.5 through the
-latest 1.21.x). Mojang's official mappings carry no parameter names or documentation, so this is a large
-readability gain. Parameter names are written into the jar before decompilation, and javadocs are injected by
-the decompiler. Mojang-mapped versions without Parchment fall back to type-based parameter names.
+| Versions          | Class, method and field names      | How it is detected |
+|-------------------|------------------------------------|--------------------|
+| 1.7.2 to 1.14.3   | Ornithe Feather (`mergedv2`), Yarn style | published on maven.ornithemc.net for that version |
+| 1.14.4 to 1.21.x  | Mojang official mappings (Mojmap)  | the version metadata has `client_mappings` |
+| 26.1 and later    | Mojang's own, shipped unobfuscated | neither of the above, the jar already has real names |
 
-On the Ornithe Feather versions (1.7.2 to 1.14.3), parameter names come from the Feather mappings directly, and
-the javadocs that Feather ships are injected the same way. So every era gets the best names and documentation
-its mappings can provide.
+Parameter names, local variable names and javadocs come from the best source each era has:
+
+| Era | Parameters | Locals | Javadocs |
+|-----|-----------|--------|----------|
+| 26.1 and later | Mojang's own | Mojang's own | none (Mojang ships none) |
+| Mojmap with a Parchment release (1.16.5 to the latest 1.21.x) | [Parchment](https://parchmentmc.org/) | decompiler assigned (`blockpos`, `i`) | Parchment |
+| Mojmap without one (1.18, 1.19, 1.19.1, 1.20, 1.21.2) | Parchment of the nearest release in the same line | decompiler assigned | the same Parchment |
+| Mojmap before Parchment (1.14.4 to 1.16.4) | derived from the type (`blockpos`, `level`, `clazz`) | decompiler assigned | none |
+| Ornithe Feather | Feather | decompiler assigned | Feather |
+
+Notes on fidelity:
+
+- **26.1 and later keep Mojang's real local variable names.** The jars carry a local variable table, and the
+  decompiler's renaming is switched off for them, so you read `ItemStack helmet` rather than `ItemStack itemstack`.
+- **Borrowed Parchment** is matched by exact owner, name and descriptor, so a method that changed between the
+  two patch releases gets no borrowed name. The marker says `borrowed from <version>` when it applies. 1.20
+  borrows from 1.20.1, a hotfix of it, for example.
+- **Type derived names** follow the decompiler's own lowercase style so parameters and locals read alike, and
+  never produce a Java keyword (`Class<?> clazz`, `Boolean obool`).
+- Parameter annotations on enum and inner-class constructors are realigned before decompiling, so `@Nullable`
+  sits on the parameter it belongs to. Older compilers counted the synthetic leading parameters and shifted it.
+
+Run `./gradlew listVersions` to print every version and the tier chosen for it.
 
 ## Usage
 
 ```bash
-# List every version and the mapping source chosen for each (no EULA needed)
+# List every version and the mapping source for each (no EULA needed)
 ./gradlew listVersions
+./gradlew listVersions -Psnapshots
 
-# Generate a single version
+# One version, or an inclusive range generated in parallel
 ./gradlew generateVersion -Pmc=1.16.5 -Peula=true
-
-# Generate an inclusive range of versions
 ./gradlew generateVersion -Pmc=1.16.5-1.18 -Peula=true
 
-# Generate all releases in parallel (resumable, skips finished versions)
+# Every release, in parallel, skipping versions that are already up to date
 ./gradlew generateAll -Peula=true
+./gradlew generateAll -Pfrom=1.20 -Pto=1.21.8 -Peula=true
 
-# Build an IDE workspace for one version (generates it first if needed)
+# An IDE workspace for one version (generates it first if needed)
 ./gradlew ide -Pmc=1.21.8 -Peula=true
 
 # Compare two versions class by class, member by member, with resources and server reports
 ./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true
 ```
 
-`generateVersion -Pmc=<from>-<to>` generates every version between the two endpoints, inclusive, in parallel
-(for example `1.16.5-1.18` covers 1.16.5, 1.17, 1.17.1 and 1.18). Endpoints are matched against the version list,
-so they must be plain release ids unless `-Psnapshots` is set.
+A range (`-Pmc=1.16.5-1.18`) covers every release between the two endpoints, inclusive: here 1.16.5, 1.17,
+1.17.1 and 1.18. With `-Psnapshots`, snapshot and pre-release ids work as endpoints too, dashes included
+(`-Pmc=1.21-pre1-1.21`).
 
-`generateAll` and ranges print a progress line after each version finishes, for example
-`[progress] 42/83 done (50%), 250s elapsed, ~245s remaining`, so a long run shows how far along it is.
+`generateAll` and ranges print a line as each version finishes, and a status line when 15 seconds pass without
+one finishing:
+
+```
+[progress] 42/88 (47%) 1.19.4 done in 61s, 250s elapsed, ~273s remaining
+[status] 265s elapsed, 42/88 done, 6 running | remapping x1, decompiling x5
+```
+
+The run exits with a non-zero code when any version failed, and the summary lists each failure with its cause.
+
+### Staying up to date
+
+A version counts as finished when its `.mcsg-done` carries the generator's current output revision. When an
+update to the generator changes what the sources look like (a decompiler option, a naming fix), the revision is
+raised, and the next `generateAll` rebuilds the versions made by the older revision. The decompile cache keeps
+that fast for every class the change did not touch. `-Pforce` rebuilds regardless.
 
 ### Browsing a version in an IDE
 
-Every version uses the same `net.minecraft` packages, so they cannot all live in one project. `./gradlew ide
--Pmc=<version>` writes a small standalone Gradle project to `workspace/` whose `src/main/java` is linked to that
-version's sources, with that version's libraries on the classpath. It also adds the compile-only annotation
-libraries Mojang references but does not ship at runtime (JSR-305 and JetBrains annotations), so imports like
-`javax.annotation.Nullable` resolve.
+Every version uses the same `net.minecraft` packages, so they cannot share one project. `./gradlew ide
+-Pmc=<version>` writes a small standalone Gradle project to `workspace/` whose `src/main/java` is that version's
+sources, with that version's libraries on the classpath. It also adds the compile-only annotation libraries
+Mojang references but does not ship (JSR-305 and JetBrains annotations), so `javax.annotation.Nullable` resolves.
 
-**Open the `workspace/` folder on its own, not the generator repo.** Opening the generator repo shows every
-version under `sources/` with no resolution. In IntelliJ use File > Open, select the `workspace/` folder, and
-choose Open in New Window. You then see only that one version, with full symbol resolution, go-to-definition,
-find-usages and references.
+**Open the `workspace/` folder on its own, not the generator repository.** In IntelliJ use File > Open, pick
+`workspace/`, and choose Open in New Window. You then see just that version, with go-to-definition, find-usages
+and references.
 
-The workspace includes its own Gradle wrapper copied from the root project, so it uses the same Gradle version.
-Running `./gradlew ide` again for a different version repoints the same `workspace/`. `workspace/` is git-ignored.
-Decompiled code is not guaranteed to compile, so some inspections may flag issues, but navigation and search work.
+`src/main/java` is a symbolic link to `sources/<version>/`. Where links are not allowed (Windows without
+Developer Mode), the build script points its source directory at `sources/<version>/` instead, which works the
+same. The workspace gets a copy of the root Gradle wrapper. Running `./gradlew ide` for another version repoints
+the same `workspace/`. Decompiled code is not guaranteed to compile, so some inspections may complain, but
+navigation and search work.
 
 ### Comparing two versions
 
-`./gradlew diffVersions -Pold=<a> -Pnew=<b>` answers "what moved" between two releases and writes the answer to
-`diffs/<a>..<b>/`, which is git-ignored for the same reason `sources/` is. It works on the jars rather than on the
-decompiled text, so decompiler formatting never shows up as a change.
+`./gradlew diffVersions -Pold=<a> -Pnew=<b>` answers "what moved" between two releases and writes it to
+`diffs/<a>..<b>/`. It compares the jars rather than decompiled text, so decompiler formatting never shows up as a
+change.
 
-- **Classes are compared as bytecode.** Every method body is normalised before it is fingerprinted: line
-  numbers, frames and constant pool order are ignored, labels are renumbered, a synthetic lambda body is folded
-  into the method that creates it, and anonymous classes are matched by content. Renumbering a lambda or an
-  anonymous class is therefore not a change, and editing a lambda shows up on the method that owns it.
-- **Members are classified.** A member is added, removed, a body change, a descriptor change, a rename (identical
-  body under a new name), a type, value, access or generic signature change. A body change carries a reference
-  delta, for example `size 120 -> 134 | + call Foo.bar, const 0.5F | - const 0.4F`, which is usually enough to
-  tell a real change from a refactor without opening the source.
+- **Classes are compared as bytecode.** Every method body is normalised before it is fingerprinted: line numbers,
+  frames and constant pool order are ignored, labels are renumbered, a synthetic lambda body is folded into the
+  method that creates it, and anonymous classes are matched by content. Renumbering a lambda or an anonymous
+  class is not a change, and editing a lambda shows up on the method that owns it.
+- **Members are classified** as added, removed, a body change, a descriptor change, a rename (identical body
+  under a new name), or a type, value, access or generic signature change. A body change carries a reference
+  delta such as `size 120 -> 134 | + call Foo.bar, const 0.5F | - const 0.4F`, often enough to tell a real change
+  from a refactor without opening the source.
 - **Moved and renamed classes are paired** by the share of identical method bodies, so a package move reads as
-  one rename rather than a removal and an addition.
-- **Resources are compared too.** JSON is flattened to `path = value` lines and diffed as a set, which is what
-  makes tag and data changes readable. Other text gets a unified diff.
-- **The server data generator runs for both versions** (`--reports`), and `packets.json`, `blocks.json` and
-  `registries.json` are rendered as tables: packet ids per phase and direction before and after, block property
-  and state changes, and registry entries added, removed and renumbered. Pass `-PnoReports` to skip it.
+  one rename, not a removal and an addition.
+- **Resources are compared.** JSON is flattened to `path = value` lines and diffed as a set, which makes tag and
+  data changes readable. Other text gets a unified diff.
+- **The server data generator runs for both versions** (`--reports`, 1.18 and later). `packets.json`,
+  `blocks.json` and `registries.json` become tables: packet ids per phase and direction, block property and state
+  changes, registry entries added, removed and renumbered. `-PnoReports` skips it.
 - **Decompiled sources are diffed** for every top-level class whose bytecode changed, when both versions have
-  been generated. The summary also counts the files whose text differs while the bytecode does not, which is the
-  decompiler noise the bytecode comparison filters out.
+  been generated. The summary also counts files whose text differs while the bytecode does not, the decompiler
+  noise the bytecode comparison filters out.
 
 ```
 diffs/26.2..26.3/
@@ -146,107 +193,150 @@ diffs/26.2..26.3/
 └── sources/<path>.java.diff    unified decompiled diffs
 ```
 
-The jars for a diff are kept under `work/jars/<version>/` and the reports under `work/reports/<version>/`, so a
-second run only compares.
+The jars for a diff stay under `work/jars/<version>/` and the reports under `work/reports/<version>/`, so a second
+run only compares.
 
 ### Accepting the Minecraft EULA
 
-Generation is gated behind the Minecraft EULA, the same way a Minecraft server is. Accept it in one of two ways:
+Generating is gated behind the Minecraft EULA, the same way a Minecraft server is. Accept it either way:
 
 - Pass `-Peula=true`, which writes or updates `eula.txt`.
-- Edit `eula.txt` (created on first run) and set `eula=true`.
+- Edit `eula.txt` (created on the first run) and set `eula=true`.
 
-`eula.txt` is git-ignored, so acceptance is per machine. `listVersions` does not require it.
+`eula.txt` is git-ignored, so acceptance is per machine. `listVersions` does not need it.
 
 ### Flags
 
-| Flag             | Task          | Meaning |
-|------------------|---------------|---------|
-| `-Peula=true`    | generate      | Accept the Minecraft EULA, required to generate |
-| `-Pforce`        | generate      | Rebuild even if `sources/<v>/.mcsg-done` exists |
-| `-Pjobs=N`       | generateAll   | Number of versions decompiled in parallel (default is about cores/4, capped at 8) |
-| `-PvfThreads=N`  | generate      | Vineflower threads per version (default is about cores/jobs) |
-| `-PvfHeap=4g`    | generate      | Heap for each Vineflower subprocess (default 3g) |
-| `-Pfrom=1.16`    | generateAll   | Start at this version, inclusive |
-| `-Pto=1.20.1`    | generateAll   | Stop at this version, inclusive |
-| `-Plimit=5`      | generateAll   | Only the first N versions of the selection |
-| `-Psnapshots`    | all tasks     | Include snapshots, pre-releases, and release candidates (default is releases only) |
-| `-PkeepWork`     | generate      | Keep the per-version scratch dir under `work/tmp/<v>/` |
-| `-PnoCache`      | generate      | Turn the decompile cache off for a fully canonical, reproducible decompile (cache is on by default, see note below) |
-| `-PresetCache`   | generate      | Delete the decompile cache before running |
-| `-Pold=26.2`     | diffVersions  | The older version of the comparison |
-| `-Pnew=26.3`     | diffVersions  | The newer version of the comparison |
-| `-PnoReports`    | diffVersions  | Skip running the server data generator for both versions |
+Switches such as `-Pforce` work bare or as `=true`.
 
-The decompile cache stores decompiled classes keyed by their content (bytecode, javadocs, and super-class
-hierarchy) and reuses them across versions and across runs, so an unchanged class is decompiled once and then
-shared everywhere it appears. It is on by default: a full `generateAll` decompiles more and more from cache as it
-proceeds, and adding a later release is fast because almost every class is already cached. The one trade off is
-that the output is not byte for byte identical to a cache free decompile. A changed class that references an
-unchanged class's nested type renders that reference with an import and a simple name rather than the qualified
-form (for example `Mutable` rather than `BlockPos.Mutable`), because reused classes sit on the classpath rather
-than in the decompile set. The code stays valid, equivalent, and navigable, and a given class is identical
-everywhere it appears regardless of run order. Pass `-PnoCache` for a fully canonical decompile, and
-`-PresetCache` to discard the cache first.
+| Flag             | Tasks              | Meaning |
+|------------------|--------------------|---------|
+| `-Peula=true`    | generate, ide, diff | Accept the Minecraft EULA |
+| `-Pmc=<v>`       | generateVersion, ide | The version, or `<from>-<to>` for `generateVersion` |
+| `-Pold=<v>` `-Pnew=<v>` | diffVersions | The two versions to compare |
+| `-Pforce`        | generate           | Rebuild even when the version is up to date |
+| `-Pfrom=<v>` `-Pto=<v>` | generateAll | Inclusive bounds of the selection |
+| `-Plimit=N`      | generateAll        | Only the first N versions of the selection |
+| `-Psnapshots`    | all                | Include snapshots, pre-releases and release candidates |
+| `-Pjobs=N`       | generate           | Versions decompiled in parallel. Default: cores / 4, capped by memory and at 8 |
+| `-PvfThreads=N`  | generate           | Vineflower threads per version. Default: cores / jobs |
+| `-PvfHeap=4g`    | generate           | Heap of each Vineflower process. Default `4g` |
+| `-PnoCache`      | generate           | Decompile without the cache, for canonical output (see below) |
+| `-PresetCache`   | generate           | Delete the decompile cache first |
+| `-PkeepWork`     | generate           | Keep the per-version scratch directory `work/tmp/<v>/` |
+| `-PnoReports`    | diffVersions       | Skip the server data generator |
 
-Parallelism note: `generateAll` runs `jobs` versions at once, each Vineflower using `vfThreads`. The defaults
-aim for `jobs * vfThreads` near the CPU core count. Peak memory is about `jobs * vfHeap` plus the build JVM, so
-lower `-Pjobs` or `-PvfHeap` on memory-constrained machines.
+### The decompile cache
+
+Decompiled classes are stored by content and reused across versions and runs, so a class that did not change
+between releases is decompiled once. The key covers the class and its inner classes, the javadocs that would be
+injected, the bytecode of every supertype, and the Vineflower version and options. It is on by default: a full
+`generateAll` gets faster as it goes, and adding a new release decompiles little more than what changed.
+
+The trade-off: the output is not byte for byte identical to an uncached decompile. A freshly decompiled class that
+refers to a cached class's nested type writes an import and the simple name (`Mutable`) instead of the qualified
+form (`BlockPos.Mutable`), because cached classes sit on the classpath rather than in the decompile set. The code
+stays equivalent and navigable. Pass `-PnoCache` for a canonical decompile and `-PresetCache` to clear the cache.
+
+### Memory and parallelism
+
+`generateAll` runs `jobs` versions at once, each Vineflower process using `vfThreads` threads and up to
+`vfHeap` of memory. Remapping runs inside the Gradle-launched JVM (up to 8 GB). The default job count fits both
+the core count and the machine's physical memory (about `vfHeap` + 1.5 GB per job, with 4 GB left over). Lower
+`-Pjobs` or `-PvfHeap` if the machine still runs short. A single version gets every core.
+
+## Windows
+
+Everything runs on Windows. Use `.\gradlew` (or `gradlew`) instead of `./gradlew`.
+
+- **PowerShell splits version arguments at the first dot.** `-Pmc=1.19.4` reaches Gradle as `-Pmc=1` plus a
+  task named `.19.4`, which fails with `Task '.19.4' not found`. Quote any `-P` argument that holds a version:
+
+  ```powershell
+  .\gradlew generateVersion "-Pmc=1.19.4" -Peula=true
+  .\gradlew diffVersions "-Pold=26.2" "-Pnew=26.3" -Peula=true
+  ```
+
+  When only one version argument was split, the build puts it back together itself and says so. With more than
+  one it stops and prints the quoted command. `cmd.exe`, Git Bash and WSL pass arguments through unchanged.
+- **Symbolic links** need Developer Mode. Without it, the IDE workspace references the sources directory instead
+  of linking it, with the same result.
+- Line endings are pinned by `.gitattributes` (`gradlew` LF, `gradlew.bat` CRLF), so the wrappers work from a
+  Windows checkout in every shell.
 
 ## How it works
 
 For each version the generator:
 
-1. Reads the Mojang piston version manifest and per-version metadata.
-2. Picks the mapping tier and downloads the mapping artifact when needed.
-3. Downloads `client.jar` and `server.jar`, unwrapping the 1.18 and later server bundler to reach the real
-   server jar.
-4. Remaps client and server independently to named names with
-   [tiny-remapper](https://github.com/FabricMC/tiny-remapper) and
-   [mapping-io](https://github.com/FabricMC/mapping-io). Mojang ProGuard files are converted on the fly, and
-   Ornithe uses its `official` to `named` `mergedv2`. For the unobfuscated 26.1 and later versions this step is
-   a verbatim copy.
-5. Merges named client and server, keeping only real Minecraft classes.
-6. Fixes parameter annotations on enum and inner-class constructors with ASM, so an annotation like
-   `@Nullable` lands on the parameter it belongs to. Older compilers counted the synthetic leading parameters
-   (an enum's name and ordinal, an inner class's enclosing instance), which shifted every following annotation
-   by one slot. This runs on every version and is a no-op where the bytecode is already correct.
-7. On Mojang-mapped versions, writes parameter names into the merged jar with ASM, using Parchment names where
-   they exist and type-derived names (matching the decompiler's local-variable style) everywhere else, so no
-   parameter is left unnamed. Feather versions already carry their parameter names through the remap step.
-8. Decompiles with Vineflower in a separate JVM, with the version libraries supplied as context and javadocs
-   injected through the decompiler (Parchment on Mojmap, Feather on the legacy versions).
-9. Writes the `.java` tree to `sources/<version>/` and a `.mcsg-done` marker.
+1. Reads Mojang's version manifest and the version's metadata (cached under `work/cache/`).
+2. Picks the mapping tier and downloads the mappings. On Mojmap it also resolves Parchment.
+3. Downloads `client.jar` and `server.jar`, checks them against the SHA-1 in the metadata, and unwraps the 1.18+
+   server bundler to reach the real server jar. Libraries are downloaded once into `work/libs/` and checked the
+   same way.
+4. Remaps client and server separately to named with
+   [tiny-remapper](https://github.com/FabricMC/tiny-remapper) and [mapping-io](https://github.com/FabricMC/mapping-io).
+   Mojang's ProGuard files are converted on the fly, Ornithe uses its `official` to `named` `mergedv2`. On 26.1+
+   this step is a copy.
+5. Merges client and server, keeping only Minecraft's classes.
+6. Realigns parameter annotations on enum and inner-class constructors with ASM, on every version.
+7. On Mojmap, writes parameter names into the merged jar with ASM: Parchment where it has them, otherwise type
+   derived. Feather versions already carry theirs through the remap.
+8. Decompiles with Vineflower in a separate JVM, with the version's libraries as context, javadocs injected by
+   the decompiler (Parchment on Mojmap, Feather on legacy), and the decompiler's variable renaming only where
+   the jar has no names of its own.
+9. Moves the result into `sources/<version>/` and writes `.mcsg-done`.
 
-Downloaded jars, libraries, and mappings are cached under `work/` and shared across versions, so re-runs and
-resumes are fast.
+The game jars and mappings are downloaded to the per-version scratch directory `work/tmp/<version>/`, deleted
+when the version finishes, so they do not pile up (about 100 MB per modern version). Version metadata, libraries
+and the decompile cache persist under `work/`. Deleting `work/` is always safe: it only costs re-downloading and
+re-decompiling.
 
 ## Requirements
 
-- A JDK. The Gradle toolchain targets Java 25.
-- Network access to Mojang, Maven Central, maven.fabricmc.net (build dependencies), maven.ornithemc.net, and
-  maven.parchmentmc.org.
-- A few GB of free disk for `sources/` and `work/`.
+- A JDK 17 or newer to run Gradle. The build uses a Java 25 toolchain, which Gradle downloads automatically if
+  none is installed.
+- Network access to Mojang (piston-meta, piston-data, libraries.minecraft.net), Maven Central,
+  maven.fabricmc.net, maven.ornithemc.net and maven.parchmentmc.org.
+- Disk: about 2.2 GB for every version's sources, plus about 2 GB under `work/` for libraries and the decompile
+  cache.
+- Memory: 8 GB is enough for one version at a time (`-Pjobs=1`). The defaults scale up from there.
+
+## Troubleshooting
+
+- **`Task '.19.4' not found`**: PowerShell split the version argument. Quote it, see [Windows](#windows).
+- **`Minecraft version 'x' is not in Mojang's version manifest`**: check the id with `./gradlew listVersions`.
+  Snapshots need `-Psnapshots`.
+- **A version failed**: the summary prints the cause. Decompiler output goes to `work/tmp/<version>/vineflower.log`,
+  kept on failure. `-PkeepWork` keeps the scratch directory on success too.
+- **Out of memory, or the machine swaps**: lower `-Pjobs`, then `-PvfHeap`.
+- **`Could not delete …`**: a file under `sources/` or `work/` is open in another program, often an IDE indexing
+  `sources/`. Close it, or open only `workspace/`, and run again.
 
 ## Project layout
 
 ```
-build.gradle.kts                 plugins, dependencies (from the version catalog), tasks
+build.gradle.kts                 tasks, dependencies from the version catalog, PowerShell argument repair
+settings.gradle.kts              toolchain resolver, PowerShell argument repair
 gradle/libs.versions.toml        dependency versions
 src/main/java/com/deathmotion/mcsources/
-├── cli/             Main                                CLI entry for list, one, all, ide, diff
-├── config/          GeneratorConfig, RunOptions, Eula   configuration and EULA gate
-├── manifest/        VersionManifest, MinecraftVersion   Mojang manifest and metadata
-├── mapping/         MappingResolver, MappingTier,       tier resolution and loading
-│   │                ResolvedMappings, MappingPlan, MappingArtifact
-│   └── parchment/   ParchmentResolver, ParchmentData    Parchment names and javadocs
-├── download/        Downloader, LibraryDownloader       HTTP and library fetching
-├── remap/           JarRemapper                         tiny-remapper wrapper
-├── jar/             ServerBundle, MinecraftClassFilter, JarAssembler, ParameterNameInjector, ParameterAnnotationFixer
-├── decompile/       VineflowerDecompiler, VineflowerWorker, ParchmentJavadocProvider, TinyCommentJavadocProvider
-├── pipeline/        SourceGenerator, VersionJars, GenerationResult, GenerationOutcome, GenerationSummary
+├── cli/             Main                                    list, one, all, ide, diff
+├── config/          GeneratorConfig, RunOptions, GeneratorProperties, Eula
+├── manifest/        VersionManifest, MinecraftVersion       Mojang manifest and metadata
+├── mapping/         MappingResolver, MappingTier, ResolvedMappings, MappingPlan, MappingArtifact
+│   └── parchment/   ParchmentResolver, ParchmentData        Parchment names and javadocs
+├── download/        Downloader, LibraryDownloader           HTTP, SHA-1 checks, libraries
+├── remap/           JarRemapper                             tiny-remapper wrapper
+├── jar/             ServerBundle, MinecraftClassFilter, JarAssembler,
+│                    ParameterAnnotationFixer, ParameterNameInjector
+├── decompile/       VineflowerDecompiler, VineflowerWorker, VineflowerOptions, DecompileSettings,
+│   │                JavadocSource, ParchmentJavadocSource, TinyJavadocSource, JavadocSourceProvider
+│   └── cache/       DecompileCache, CachedDecompile, JarIndex, ClassEntry, JavadocDigest
+├── pipeline/        SourceGenerator, VersionJars, Phase, ProgressTracker,
+│                    GenerationResult, GenerationOutcome, GenerationSummary
 ├── diff/            VersionDiff, JarComparison, ClassShape, InstructionText, ResourceComparison,
-│                    ServerReports, ReportTables, SourceComparison, DiffReport   the version comparison
-├── ide/             IdeWorkspace                        generates the per-version IDE project
-└── util/            PathUtils
+│                    ServerReports, ReportTables, SourceComparison, DiffReport, ...
+├── ide/             IdeWorkspace                            the per-version IDE project
+└── util/            PathUtils, Hashing
 ```
+
+Contributor and agent guidance is in [AGENTS.md](AGENTS.md).
