@@ -8,7 +8,8 @@ public record GeneratorConfig(Path sourcesDir,
                               boolean keepWork,
                               boolean cacheEnabled,
                               String vineflowerHeap,
-                              int decompilerThreads) {
+                              int decompilerThreads,
+                              boolean serverReports) {
 
     public static GeneratorConfig fromSystemProperties(int decompilerThreads) {
         return new GeneratorConfig(
@@ -18,7 +19,8 @@ public record GeneratorConfig(Path sourcesDir,
                 flag("mcsg.keepWork"),
                 !flag("mcsg.noCache"),
                 System.getProperty("mcsg.vfHeap", "4g"),
-                decompilerThreads);
+                decompilerThreads,
+                !flag("mcsg.noReports"));
     }
 
     private static Path requiredPath(String key) {
@@ -48,5 +50,17 @@ public record GeneratorConfig(Path sourcesDir,
 
     public Path scratchDir(String versionId) {
         return workDir.resolve("tmp").resolve(versionId);
+    }
+
+    public Path jarsDir(String versionId) {
+        return workDir.resolve("jars").resolve(versionId);
+    }
+
+    public Path reportsDir(String versionId) {
+        return workDir.resolve("reports").resolve(versionId);
+    }
+
+    public Path diffsDir() {
+        return sourcesDir.resolveSibling("diffs");
     }
 }

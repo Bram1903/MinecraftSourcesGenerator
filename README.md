@@ -82,6 +82,9 @@ its mappings can provide.
 
 # Build an IDE workspace for one version (generates it first if needed)
 ./gradlew ide -Pmc=1.21.8 -Peula=true
+
+# Compare two versions class by class, member by member, with resources and server reports
+./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true
 ```
 
 `generateVersion -Pmc=<from>-<to>` generates every version between the two endpoints, inclusive, in parallel
@@ -108,6 +111,44 @@ The workspace includes its own Gradle wrapper copied from the root project, so i
 Running `./gradlew ide` again for a different version repoints the same `workspace/`. `workspace/` is git-ignored.
 Decompiled code is not guaranteed to compile, so some inspections may flag issues, but navigation and search work.
 
+### Comparing two versions
+
+`./gradlew diffVersions -Pold=<a> -Pnew=<b>` answers "what moved" between two releases and writes the answer to
+`diffs/<a>..<b>/`, which is git-ignored for the same reason `sources/` is. It works on the jars rather than on the
+decompiled text, so decompiler formatting never shows up as a change.
+
+- **Classes are compared as bytecode.** Every method body is normalised before it is fingerprinted: line
+  numbers, frames and constant pool order are ignored, labels are renumbered, a synthetic lambda body is folded
+  into the method that creates it, and anonymous classes are matched by content. Renumbering a lambda or an
+  anonymous class is therefore not a change, and editing a lambda shows up on the method that owns it.
+- **Members are classified.** A member is added, removed, a body change, a descriptor change, a rename (identical
+  body under a new name), a type, value, access or generic signature change. A body change carries a reference
+  delta, for example `size 120 -> 134 | + call Foo.bar, const 0.5F | - const 0.4F`, which is usually enough to
+  tell a real change from a refactor without opening the source.
+- **Moved and renamed classes are paired** by the share of identical method bodies, so a package move reads as
+  one rename rather than a removal and an addition.
+- **Resources are compared too.** JSON is flattened to `path = value` lines and diffed as a set, which is what
+  makes tag and data changes readable. Other text gets a unified diff.
+- **The server data generator runs for both versions** (`--reports`), and `packets.json`, `blocks.json` and
+  `registries.json` are rendered as tables: packet ids per phase and direction before and after, block property
+  and state changes, and registry entries added, removed and renumbered. Pass `-PnoReports` to skip it.
+- **Decompiled sources are diffed** for every top-level class whose bytecode changed, when both versions have
+  been generated. The summary also counts the files whose text differs while the bytecode does not, which is the
+  decompiler noise the bytecode comparison filters out.
+
+```
+diffs/26.2..26.3/
+├── summary.md                  versions, counts, per package and per resource group tables
+├── packages/<package>.md       every changed class in the package, one line per member change
+├── members.tsv                 the same, one tab separated row per change, for grep and awk
+├── resources/<group>.md        added, removed and changed data files with flattened JSON deltas
+├── reports/                    packets.json.md, blocks.json.md, registries.json.md, and other/
+└── sources/<path>.java.diff    unified decompiled diffs
+```
+
+The jars for a diff are kept under `work/jars/<version>/` and the reports under `work/reports/<version>/`, so a
+second run only compares.
+
 ### Accepting the Minecraft EULA
 
 Generation is gated behind the Minecraft EULA, the same way a Minecraft server is. Accept it in one of two ways:
@@ -133,6 +174,9 @@ Generation is gated behind the Minecraft EULA, the same way a Minecraft server i
 | `-PkeepWork`     | generate      | Keep the per-version scratch dir under `work/tmp/<v>/` |
 | `-PnoCache`      | generate      | Turn the decompile cache off for a fully canonical, reproducible decompile (cache is on by default, see note below) |
 | `-PresetCache`   | generate      | Delete the decompile cache before running |
+| `-Pold=26.2`     | diffVersions  | The older version of the comparison |
+| `-Pnew=26.3`     | diffVersions  | The newer version of the comparison |
+| `-PnoReports`    | diffVersions  | Skip running the server data generator for both versions |
 
 The decompile cache stores decompiled classes keyed by their content (bytecode, javadocs, and super-class
 hierarchy) and reuses them across versions and across runs, so an unchanged class is decompiled once and then
@@ -190,7 +234,7 @@ resumes are fast.
 build.gradle.kts                 plugins, dependencies (from the version catalog), tasks
 gradle/libs.versions.toml        dependency versions
 src/main/java/com/deathmotion/mcsources/
-├── cli/             Main                                CLI entry for list, one, all
+├── cli/             Main                                CLI entry for list, one, all, ide, diff
 ├── config/          GeneratorConfig, RunOptions, Eula   configuration and EULA gate
 ├── manifest/        VersionManifest, MinecraftVersion   Mojang manifest and metadata
 ├── mapping/         MappingResolver, MappingTier,       tier resolution and loading
@@ -200,7 +244,9 @@ src/main/java/com/deathmotion/mcsources/
 ├── remap/           JarRemapper                         tiny-remapper wrapper
 ├── jar/             ServerBundle, MinecraftClassFilter, JarAssembler, ParameterNameInjector, ParameterAnnotationFixer
 ├── decompile/       VineflowerDecompiler, VineflowerWorker, ParchmentJavadocProvider, TinyCommentJavadocProvider
-├── pipeline/        SourceGenerator, GenerationResult, GenerationOutcome, GenerationSummary
+├── pipeline/        SourceGenerator, VersionJars, GenerationResult, GenerationOutcome, GenerationSummary
+├── diff/            VersionDiff, JarComparison, ClassShape, InstructionText, ResourceComparison,
+│                    ServerReports, ReportTables, SourceComparison, DiffReport   the version comparison
 ├── ide/             IdeWorkspace                        generates the per-version IDE project
 └── util/            PathUtils
 ```

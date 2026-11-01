@@ -14,6 +14,7 @@ dependencies {
     implementation(libs.asm)
     implementation(libs.asm.tree)
     implementation(libs.vineflower)
+    implementation(libs.java.diff.utils)
 }
 
 java {
@@ -38,7 +39,7 @@ fun JavaExec.configureGenerator() {
     systemProperty("mcsg.workDir", workDir.asFile.absolutePath)
     systemProperty("mcsg.projectDir", layout.projectDirectory.asFile.absolutePath)
     listOf("force", "from", "to", "limit", "jobs", "vfThreads", "snapshots", "keepWork", "vfHeap", "eula",
-            "noCache", "resetCache")
+            "noCache", "resetCache", "noReports")
         .forEach { key -> (project.findProperty(key) as String?)?.let { systemProperty("mcsg.$key", it) } }
 }
 
@@ -58,6 +59,12 @@ tasks.register<JavaExec>("generateAll") {
     description = "Decompile every Minecraft release since 1.7.2 in parallel. Resumable. Usage: ./gradlew generateAll -Peula=true"
     configureGenerator()
     args("all")
+}
+
+tasks.register<JavaExec>("diffVersions") {
+    description = "Compare two versions class by class and member by member, with resources, server reports and source diffs. Usage: ./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true"
+    configureGenerator()
+    args("diff", (project.findProperty("old") as String?) ?: "<unset>", (project.findProperty("new") as String?) ?: "<unset>")
 }
 
 tasks.register<JavaExec>("ide") {

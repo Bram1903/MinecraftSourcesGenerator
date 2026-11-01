@@ -1,6 +1,9 @@
 # --- Generated Minecraft sources (NEVER commit, Mojang only permits LOCAL decompilation) ---
 sources/
 
+# --- Version diffs (carry decompiled Minecraft code, same rule as sources/) ---
+diffs/
+
 # --- Working/cache dir (downloaded jars, mappings, intermediate remapped jars) ---
 work/
 

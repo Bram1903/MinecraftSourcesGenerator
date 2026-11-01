@@ -5,12 +5,8 @@ import com.deathmotion.mcsources.decompile.VineflowerDecompiler;
 import com.deathmotion.mcsources.decompile.VineflowerOptions;
 import com.deathmotion.mcsources.decompile.cache.CachedDecompile;
 import com.deathmotion.mcsources.decompile.cache.DecompileCache;
-import com.deathmotion.mcsources.download.Downloader;
-import com.deathmotion.mcsources.download.LibraryDownloader;
-import com.deathmotion.mcsources.jar.JarAssembler;
 import com.deathmotion.mcsources.jar.ParameterAnnotationFixer;
 import com.deathmotion.mcsources.jar.ParameterNameInjector;
-import com.deathmotion.mcsources.jar.ServerBundle;
 import com.deathmotion.mcsources.manifest.MinecraftVersion;
 import com.deathmotion.mcsources.manifest.VersionManifest;
 import com.deathmotion.mcsources.mapping.MappingResolver;
@@ -18,7 +14,6 @@ import com.deathmotion.mcsources.mapping.MappingTier;
 import com.deathmotion.mcsources.mapping.ResolvedMappings;
 import com.deathmotion.mcsources.mapping.parchment.ParchmentData;
 import com.deathmotion.mcsources.mapping.parchment.ParchmentResolver;
-import com.deathmotion.mcsources.remap.JarRemapper;
 import com.deathmotion.mcsources.util.Hashing;
 import com.deathmotion.mcsources.util.PathUtils;
 import com.google.gson.JsonObject;
@@ -107,7 +102,6 @@ public final class SourceGenerator {
             Files.createDirectories(scratch);
 
             JsonObject metadata = manifest.metadata(version);
-            JsonObject downloads = metadata.getAsJsonObject("downloads");
 
             onPhase.accept(Phase.MAPPINGS);
             ResolvedMappings mappings = MappingResolver.resolve(metadata, id, scratch);
@@ -120,31 +114,10 @@ public final class SourceGenerator {
                 }
             }
 
-            onPhase.accept(Phase.DOWNLOAD);
-            List<Path> libraries = LibraryDownloader.resolve(metadata, config.librariesDir());
-
-            Path clientJar = Downloader.download(
-                    downloads.getAsJsonObject("client").get("url").getAsString(), scratch.resolve("client.jar"));
-            Path serverJar = null;
-            if (downloads.has("server")) {
-                Path rawServer = Downloader.download(
-                        downloads.getAsJsonObject("server").get("url").getAsString(), scratch.resolve("server.jar"));
-                serverJar = ServerBundle.extractServerJar(rawServer, scratch.resolve("server-extracted.jar"));
-            }
-
-            onPhase.accept(Phase.REMAP);
-            int remapThreads = config.decompilerThreads();
-            Path clientNamed = scratch.resolve("client-named.jar");
-            JarRemapper.remap(clientJar, clientNamed, mappings.clientTree(), libraries, remapThreads);
-            Path serverNamed = null;
-            if (serverJar != null) {
-                serverNamed = scratch.resolve("server-named.jar");
-                JarRemapper.remap(serverJar, serverNamed, mappings.serverTree(), libraries, remapThreads);
-            }
-
-            onPhase.accept(Phase.MERGE);
-            Path merged = scratch.resolve("minecraft.jar");
-            int classes = JarAssembler.assemble(clientNamed, serverNamed, mappings.namedClasses(), merged);
+            VersionJars jars = VersionJars.assemble(config, metadata, mappings, scratch, onPhase);
+            List<Path> libraries = jars.libraries();
+            Path merged = jars.merged();
+            int classes = jars.classes();
 
             onPhase.accept(Phase.TRANSFORM);
             ParameterAnnotationFixer.apply(merged);

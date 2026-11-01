@@ -17,8 +17,12 @@ releases are picked up automatically) into `sources/<version>/net/minecraft/…`
 - Build an IDE workspace for one version: `./gradlew ide -Pmc=<version> -Peula=true` (writes `workspace/`, a
   Gradle project whose source root is that version's sources with its libraries on the classpath, for
   go-to-definition, find-usages and references). Open `workspace/` in the IDE; re-run to switch versions.
+- Compare two versions: `./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true` (writes `diffs/<old>..<new>/`:
+  `summary.md`, `packages/<package>.md` member level changes, `members.tsv`, `resources/`, `reports/` for the
+  server data generator's packets, blocks and registries, and `sources/` decompiled diffs; `-PnoReports` skips
+  the data generator). Start with `summary.md`, then grep `members.tsv`.
 
-`sources/`, `work/` and `eula.txt` are git-ignored. **Never commit decompiled Minecraft code or the mappings**
+`sources/`, `diffs/`, `work/` and `eula.txt` are git-ignored. **Never commit decompiled Minecraft code or the mappings**
 used to produce it, and never paste large verbatim chunks of it into public places — it is for local, personal
 study only (Minecraft EULA).
 
@@ -106,7 +110,16 @@ Code under `src/main/java/com/deathmotion/mcsources/`:
   byte identical to a full decompile: a miss that references a hit's nested type imports it by simple name instead
   of qualifying it, because reused classes sit on the classpath rather than the decompile set (a Vineflower
   constraint, see `ImportCollector.getShortName`). That is why it is opt-in.
-- `pipeline/` — `SourceGenerator` (per-version orchestration), `GenerationResult`/`GenerationOutcome`/`GenerationSummary`.
+- `pipeline/` — `SourceGenerator` (per-version orchestration), `VersionJars` (download, unwrap, remap and merge,
+  shared by generation and diffing), `GenerationResult`/`GenerationOutcome`/`GenerationSummary`.
+- `diff/` — `VersionDiff` (orchestrates a comparison), `ClassIndex` (reads a jar into ASM nodes), `ClassShape`
+  (a class summarised to fields and fingerprinted methods), `InstructionText` (the normalised instruction text
+  a fingerprint hashes, lambdas folded in, own and anonymous class names normalised, plus the reference sets
+  behind a body change's detail), `JarComparison` and `MemberChange` (added, removed, renamed and changed
+  classes and members), `ResourceIndex`/`ResourceComparison`/`TextDelta` (data files, JSON flattened to lines),
+  `ServerReports` (runs `net.minecraft.data.Main --reports` from the server bundle), `ReportTables` (packets,
+  blocks and registries rendered as tables), `SourceComparison` (decompiled diffs and the text only noise
+  count) and `DiffReport` (writes `diffs/<old>..<new>/`).
 - `ide/` — `IdeWorkspace` (writes the per-version Gradle project under `workspace/`).
 - `util/` — `PathUtils`.
 

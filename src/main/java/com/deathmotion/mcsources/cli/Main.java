@@ -3,6 +3,7 @@ package com.deathmotion.mcsources.cli;
 import com.deathmotion.mcsources.config.Eula;
 import com.deathmotion.mcsources.config.GeneratorConfig;
 import com.deathmotion.mcsources.config.RunOptions;
+import com.deathmotion.mcsources.diff.VersionDiff;
 import com.deathmotion.mcsources.download.LibraryDownloader;
 import com.deathmotion.mcsources.ide.IdeWorkspace;
 import com.deathmotion.mcsources.manifest.MinecraftVersion;
@@ -32,7 +33,7 @@ public final class Main {
 
     static void main(String[] args) throws Exception {
         if (args.length == 0) {
-            System.err.println("Usage: <list | one <version> | all>");
+            System.err.println("Usage: <list | one <version> | all | ide <version> | diff <old> <new>>");
             System.exit(2);
             return;
         }
@@ -46,6 +47,7 @@ public final class Main {
             case "one" -> generate(config, manifest, options, args);
             case "all" -> generateAll(config, manifest, options);
             case "ide" -> ide(config, manifest, args);
+            case "diff" -> diff(config, manifest, args);
             default -> {
                 System.err.println("Unknown mode: " + args[0]);
                 System.exit(2);
@@ -146,6 +148,23 @@ public final class Main {
         System.out.println("IntelliJ: File > Open, select that folder, choose 'Open in New Window'.");
         System.out.println("It shows just Minecraft " + id + " with go-to-definition, find-usages and references.");
         System.out.println("Re-run './gradlew ide -Pmc=<version>' to switch the workspace to another version.");
+    }
+
+    private static void diff(GeneratorConfig config, VersionManifest manifest, String[] args) throws Exception {
+        if (args.length < 3 || args[1].equals("<unset>") || args[2].equals("<unset>")) {
+            System.err.println("Usage: ./gradlew diffVersions -Pold=<version> -Pnew=<version>   (e.g. -Pold=26.2 -Pnew=26.3)");
+            System.exit(2);
+            return;
+        }
+        if (!requireEula()) {
+            System.exit(3);
+            return;
+        }
+        Path output = new VersionDiff(config, manifest)
+                .run(manifest.find(args[1]), manifest.find(args[2]), System.out::println);
+        System.out.println();
+        System.out.println("Diff written to " + output);
+        System.out.println("Start with " + output.resolve("summary.md"));
     }
 
     private static void generateAll(GeneratorConfig config, VersionManifest manifest, RunOptions options)
