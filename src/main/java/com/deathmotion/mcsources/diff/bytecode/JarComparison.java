@@ -1,10 +1,10 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.bytecode;
 
 import com.deathmotion.mcsources.classfile.InternalNames;
-import com.deathmotion.mcsources.diff.ClassShape.FieldShape;
-import com.deathmotion.mcsources.diff.ClassShape.MethodShape;
-import com.deathmotion.mcsources.diff.MemberChange.Change;
-import com.deathmotion.mcsources.diff.MemberChange.Member;
+import com.deathmotion.mcsources.diff.bytecode.ClassShape.FieldShape;
+import com.deathmotion.mcsources.diff.bytecode.ClassShape.MethodShape;
+import com.deathmotion.mcsources.diff.bytecode.MemberChange.Change;
+import com.deathmotion.mcsources.diff.bytecode.MemberChange.Member;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
@@ -35,7 +35,7 @@ public record JarComparison(int classesBefore,
     public record ClassRename(String from, String to, double overlap, ClassChange change) {
     }
 
-    static JarComparison compare(ClassIndex before, ClassIndex after) {
+    public static JarComparison compare(ClassIndex before, ClassIndex after) {
         Map<String, ClassShape> old = shapes(before);
         Map<String, ClassShape> updated = shapes(after);
         Map<String, List<Long>> oldAnonymous = anonymousByTopLevel(old);

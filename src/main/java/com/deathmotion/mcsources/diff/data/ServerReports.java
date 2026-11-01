@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.data;
 
 import com.deathmotion.mcsources.io.Directories;
 
@@ -7,14 +7,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 
-final class ServerReports {
+public final class ServerReports {
     private static final String DONE_MARKER = ".reports-done";
     private static final long TIMEOUT_MINUTES = 15;
 
     private ServerReports() {
     }
 
-    static Path generate(Path serverBundle, Path directory) throws IOException, InterruptedException {
+    public static Path generate(Path serverBundle, Path directory) throws IOException, InterruptedException {
         Path reports = directory.resolve("generated").resolve("reports");
         if (Files.exists(directory.resolve(DONE_MARKER)) && Files.isDirectory(reports)) {
             return reports;

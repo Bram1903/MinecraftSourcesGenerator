@@ -150,7 +150,15 @@ Code under `src/main/java/com/deathmotion/mcsources/`:
   current, where a file goes, the marker), `PreparedVersions` (soft references, so a full run fits the heap and a
   dropped version is prepared again), `VersionTasks` (parallel per-version work with failures recorded per
   version), `StageClock`, `Verification`, `Console`, `GenerationResult`, `GenerationOutcome`, `GenerationSummary`.
-- `diff/`: `VersionDiff` and the comparison, unchanged in behaviour.
+- `diff/`: `VersionDiff` (the entry point, sequences one comparison), `DiffReport` (writes `diffs/<old>..<new>/`),
+  `SourceComparison` (decompiled diffs and the text only noise count), `TextDelta` (unified diffs and JSON
+  flattened to lines, shared by everything below).
+  - `diff/bytecode/`: the class comparison. `ClassIndex`, `ClassShape` (a class as fields and fingerprinted
+    methods), `InstructionText` (the normalised instruction text a fingerprint hashes), `JarComparison` and
+    `MemberChange` (added, removed, renamed and changed classes and members), `ClassNames`.
+  - `diff/data/`: the data files. `ResourceIndex` and `ResourceComparison` (the jars' resources), `ServerReports`
+    (runs the server data generator), `ReportTables` and `ReportComparison` (packets, blocks and registries as
+    tables, the rest as resources).
 - `ide/`: `IdeWorkspace`.
 - `classfile/`: `InternalNames` (top-level class and package of an internal name), `JarClasses` (class entries of
   a jar).

@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.data;
 
 import java.io.IOException;
 import java.io.InputStream;

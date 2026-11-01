@@ -1,7 +1,8 @@
 package com.deathmotion.mcsources.diff;
 
 import com.deathmotion.mcsources.classfile.InternalNames;
-import com.deathmotion.mcsources.diff.JarComparison.ClassRename;
+import com.deathmotion.mcsources.diff.bytecode.JarComparison;
+import com.deathmotion.mcsources.diff.bytecode.JarComparison.ClassRename;
 
 import com.deathmotion.mcsources.pipeline.SourceTree;
 

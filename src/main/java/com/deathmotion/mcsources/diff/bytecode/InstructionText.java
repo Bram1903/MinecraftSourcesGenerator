@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.bytecode;
 
 import com.deathmotion.mcsources.classfile.InternalNames;
 import org.objectweb.asm.ConstantDynamic;

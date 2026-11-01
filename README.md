@@ -353,8 +353,9 @@ src/main/java/com/deathmotion/mcsources/
 │   └── store/       DecompileStore, DiskStore, MemoryStore
 ├── pipeline/        Generation, Planning, Decompilation, SourceTree, PreparedVersions, VersionTasks,
 │                    StageClock, Verification, Console, GenerationResult, GenerationOutcome, GenerationSummary
-├── diff/            VersionDiff, JarComparison, ClassShape, InstructionText, ResourceComparison,
-│                    ServerReports, ReportTables, SourceComparison, DiffReport, ...
+├── diff/            VersionDiff, DiffReport, SourceComparison, TextDelta      the version comparison
+│   ├── bytecode/    ClassIndex, ClassShape, InstructionText, JarComparison, MemberChange, ClassNames
+│   └── data/        ResourceIndex, ResourceComparison, ServerReports, ReportTables, ReportComparison
 ├── ide/             IdeWorkspace                            the per-version IDE project
 ├── classfile/       InternalNames, JarClasses
 └── io/              Directories, Hashing

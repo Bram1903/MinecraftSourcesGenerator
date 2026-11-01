@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.bytecode;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.tree.ClassNode;

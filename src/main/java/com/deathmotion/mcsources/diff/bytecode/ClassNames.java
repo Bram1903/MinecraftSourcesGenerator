@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.bytecode;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-final class ClassNames {
+public final class ClassNames {
     private static final Pattern ANONYMOUS_SEGMENT = Pattern.compile("\\$\\d");
 
     private ClassNames() {
@@ -18,12 +18,12 @@ final class ClassNames {
         return ANONYMOUS_SEGMENT.matcher(internalName).find();
     }
 
-    static String packageOf(String internalName) {
+    public static String packageOf(String internalName) {
         int slash = internalName.lastIndexOf('/');
         return slash < 0 ? "(default)" : internalName.substring(0, slash).replace('/', '.');
     }
 
-    static String simple(String internalName) {
+    public static String simple(String internalName) {
         if (internalName == null) {
             return "none";
         }

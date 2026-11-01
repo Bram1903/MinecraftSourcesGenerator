@@ -1,7 +1,12 @@
 package com.deathmotion.mcsources.diff;
 
 import com.deathmotion.mcsources.config.GeneratorConfig;
-import com.deathmotion.mcsources.diff.ResourceIndex.Resource;
+import com.deathmotion.mcsources.diff.bytecode.ClassIndex;
+import com.deathmotion.mcsources.diff.bytecode.JarComparison;
+import com.deathmotion.mcsources.diff.data.ReportComparison;
+import com.deathmotion.mcsources.diff.data.ResourceComparison;
+import com.deathmotion.mcsources.diff.data.ResourceIndex;
+import com.deathmotion.mcsources.diff.data.ServerReports;
 import com.deathmotion.mcsources.manifest.MinecraftVersion;
 import com.deathmotion.mcsources.manifest.VersionManifest;
 import com.deathmotion.mcsources.io.Directories;
@@ -27,9 +32,6 @@ public final class VersionDiff {
     private record Snapshot(String id, ClassIndex classes, ResourceIndex resources, ResourceIndex reports) {
     }
 
-    public record Reports(Map<String, List<String>> tables, ResourceComparison rest) {
-    }
-
     public Path run(MinecraftVersion older, MinecraftVersion newer, Consumer<String> log) throws Exception {
         Snapshot before = snapshot(older, log);
         Snapshot after = snapshot(newer, log);
@@ -40,10 +42,10 @@ public final class VersionDiff {
         log.accept("comparing resources");
         ResourceComparison resources = ResourceComparison.compare(before.resources(), after.resources(), Set.of());
 
-        Optional<Reports> reports = Optional.empty();
+        Optional<ReportComparison> reports = Optional.empty();
         if (before.reports() != null && after.reports() != null) {
             log.accept("comparing server reports");
-            reports = Optional.of(compareReports(before.reports(), after.reports()));
+            reports = Optional.of(ReportComparison.compare(before.reports(), after.reports()));
         }
 
         log.accept("comparing decompiled sources");
@@ -80,17 +82,5 @@ public final class VersionDiff {
             }
         }
         return new Snapshot(id, classes, resources, reports);
-    }
-
-    private static Reports compareReports(ResourceIndex before, ResourceIndex after) {
-        Map<String, List<String>> tables = new TreeMap<>();
-        for (String name : ReportTables.SPECIAL) {
-            Optional<Resource> old = before.find(name);
-            Optional<Resource> updated = after.find(name);
-            if (old.isPresent() && updated.isPresent() && old.get().text() != null && updated.get().text() != null) {
-                tables.put(name, ReportTables.of(name, old.get().text(), updated.get().text()));
-            }
-        }
-        return new Reports(tables, ResourceComparison.compare(before, after, ReportTables.SPECIAL));
     }
 }

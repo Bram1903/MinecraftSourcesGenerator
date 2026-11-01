@@ -1,5 +1,6 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.data;
 
+import com.deathmotion.mcsources.diff.TextDelta;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 

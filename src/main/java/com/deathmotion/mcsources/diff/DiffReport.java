@@ -1,10 +1,15 @@
 package com.deathmotion.mcsources.diff;
 
-import com.deathmotion.mcsources.diff.JarComparison.ClassChange;
-import com.deathmotion.mcsources.diff.JarComparison.ClassRename;
-import com.deathmotion.mcsources.diff.MemberChange.Change;
-import com.deathmotion.mcsources.diff.ResourceIndex.Resource;
-import com.deathmotion.mcsources.diff.VersionDiff.Reports;
+import com.deathmotion.mcsources.diff.bytecode.ClassNames;
+import com.deathmotion.mcsources.diff.bytecode.JarComparison;
+import com.deathmotion.mcsources.diff.bytecode.JarComparison.ClassChange;
+import com.deathmotion.mcsources.diff.bytecode.JarComparison.ClassRename;
+import com.deathmotion.mcsources.diff.bytecode.MemberChange;
+import com.deathmotion.mcsources.diff.bytecode.MemberChange.Change;
+import com.deathmotion.mcsources.diff.data.ReportComparison;
+import com.deathmotion.mcsources.diff.data.ResourceComparison;
+import com.deathmotion.mcsources.diff.data.ResourceIndex;
+import com.deathmotion.mcsources.diff.data.ResourceIndex.Resource;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -33,7 +38,7 @@ final class DiffReport {
         this.afterResources = afterResources;
     }
 
-    void write(JarComparison classes, ResourceComparison resources, Optional<Reports> reports,
+    void write(JarComparison classes, ResourceComparison resources, Optional<ReportComparison> reports,
                SourceComparison sources) throws IOException {
         Files.createDirectories(output);
         writePackages(classes);
@@ -48,7 +53,7 @@ final class DiffReport {
         writeSummary(classes, resources, reports, sources);
     }
 
-    private void writeSummary(JarComparison classes, ResourceComparison resources, Optional<Reports> reports,
+    private void writeSummary(JarComparison classes, ResourceComparison resources, Optional<ReportComparison> reports,
                               SourceComparison sources) throws IOException {
         List<String> out = new ArrayList<>();
         out.add("# " + older + " -> " + newer);
@@ -238,7 +243,7 @@ final class DiffReport {
         }
     }
 
-    private void writeReports(Reports reports) throws IOException {
+    private void writeReports(ReportComparison reports) throws IOException {
         for (Map.Entry<String, List<String>> table : reports.tables().entrySet()) {
             List<String> lines = new ArrayList<>(List.of("# " + table.getKey(), ""));
             lines.addAll(table.getValue());

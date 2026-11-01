@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.bytecode;
 
 public record MemberChange(Member member, Change change, String name, String descriptor, String detail) {
 

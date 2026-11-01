@@ -1,6 +1,7 @@
-package com.deathmotion.mcsources.diff;
+package com.deathmotion.mcsources.diff.data;
 
-import com.deathmotion.mcsources.diff.ResourceIndex.Resource;
+import com.deathmotion.mcsources.diff.TextDelta;
+import com.deathmotion.mcsources.diff.data.ResourceIndex.Resource;
 
 import java.util.*;
 
@@ -9,7 +10,7 @@ public record ResourceComparison(List<String> added, List<String> removed, List<
 
     private static final int ADDED_CONTENT_LIMIT = 400;
 
-    static ResourceComparison compare(ResourceIndex before, ResourceIndex after, Set<String> excluded) {
+    public static ResourceComparison compare(ResourceIndex before, ResourceIndex after, Set<String> excluded) {
         Set<String> paths = new TreeSet<>(before.resources().keySet());
         paths.addAll(after.resources().keySet());
         paths.removeAll(excluded);
@@ -46,7 +47,7 @@ public record ResourceComparison(List<String> added, List<String> removed, List<
                 .map(lines -> lines.stream().map(line -> "+ " + line).toList());
     }
 
-    static String group(String path) {
+    public static String group(String path) {
         String[] parts = path.split("/");
         int depth = parts[0].equals("data") || parts[0].equals("assets") ? 4 : 1;
         int length = Math.min(depth, parts.length - 1);
