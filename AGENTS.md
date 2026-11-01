@@ -13,11 +13,12 @@ the local machine and is git-ignored.
 | Task | Command |
 |------|---------|
 | Generate one version | `./gradlew generateVersion -Pmc=<version> -Peula=true` |
-| Generate an inclusive range, in parallel | `./gradlew generateVersion -Pmc=<from>-<to> -Peula=true` (e.g. `-Pmc=1.16.5-1.18`) |
+| Generate a range or a list | `./gradlew generateVersion -Pmc=1.16.5-1.18,1.20.1,26.3 -Peula=true` |
 | Generate everything (parallel, resumable) | `./gradlew generateAll -Peula=true` |
 | Print the version to mapping table | `./gradlew listVersions` |
 | IDE workspace for one version | `./gradlew ide -Pmc=<version> -Peula=true`, then open `workspace/` on its own |
 | Compare two versions | `./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true` |
+| Prove output equals a full decompile | `./gradlew verifySources -Pmc=<versions> -Peula=true` |
 
 `diffVersions` writes `diffs/<old>..<new>/`: `summary.md`, `packages/<package>.md` (member level changes),
 `members.tsv`, `resources/`, `reports/` (the server data generator's packets, blocks and registries) and
@@ -82,53 +83,78 @@ class, method or field names.
 
 ## Generator architecture
 
-Pure JVM pipeline, no Fabric or Loom dependency. Per version:
+Pure JVM, one process, no Fabric or Loom dependency, no intermediate jars. A run is five stages, sequenced by
+`pipeline/Generation` and nothing else:
 
-1. Resolve the mapping tier, then the mappings (and Parchment on Mojmap).
-2. Download the client and server jars, checked against Mojang's SHA-1, and unwrap the 1.18+ server bundler.
-3. Remap each side to named with tiny-remapper and mapping-io (a plain copy on 26.1+).
-4. Merge, client first, keeping only Minecraft classes.
-5. Realign parameter annotations on enum and inner-class constructors with ASM (every tier).
-6. On Mojmap, write parameter names into the jar with ASM: Parchment, else type derived, never a Java keyword.
-7. Decompile with Vineflower in a separate worker JVM. Javadocs come in through the decompiler. Vineflower's
-   `jad` variable renaming runs only where the jar has no local variable names of its own (`MappingTier
-   .shipsLocalNames()`), so the real names in 26.1+ jars survive.
-8. Move the result into `sources/<version>/` and write `.mcsg-done`.
+1. **Select.** Versions whose `.mcsg-done` carries the current `SourceTree.OUTPUT_REVISION` are skipped.
+2. **Prepare** (`version/VersionPreparer`, several versions at once). Resolve the tier and mappings (and Parchment
+   on Mojmap), download the client and server jars into `work/downloads/<version>/` (checked against Mojang's
+   SHA-1, the 1.18+ server bundler unwrapped), remap each side to named with tiny-remapper straight into memory
+   (a plain read on 26.1+), merge client first keeping only Minecraft classes, then run the decompile transforms
+   (`version/transform`): parameter annotations realigned on every tier, parameter names written on Mojmap
+   (Parchment, else type derived, never a Java keyword). Diffing stops before the transforms
+   (`VersionPreparer.assemble`), so it compares the game's own bytecode.
+3. **Plan** (`decompile/plan`). Every top-level class and its inner classes (a `ClassGroup`) gets a key that
+   covers everything Vineflower's output for it depends on: its bytecode, the javadocs that would be injected,
+   the structure (header, members, signatures, inner class table, no code) of every class it references and of
+   their supertypes and outer classes transitively, the class names in its package, the Vineflower jar and
+   options and the Java runtime. A group that uses a synthetic member of another group (an enum switch table, an
+   `access$` accessor, a `class$` lookup) gets that group as a companion: its full bytecode joins the key and it is
+   processed in the same Vineflower run, because Vineflower reads those members' processed code. This only happens
+   across groups where inner classes were flattened to `Outer__Inner` (Ornithe Feather before 1.8.2). `DecompileWork`
+   then hands every key that is not in the store to exactly one version, largest first, so a class shared by forty
+   versions is decompiled once. When a run fails, its classes are handed to another version that has them.
+4. **Decompile** (`decompile/vineflower/VineflowerRun`, `jobs` runs at once, `vfThreads` threads each). Vineflower
+   runs in process on the whole version as its context, so imports, nested names and inference are exactly
+   those of a full decompile, and `getClassEntryName` skips every class the run was not handed or does not need as
+   a companion. A run that hits `OutOfMemoryError` anywhere (Vineflower turns errors into comments) keeps nothing.
+   Each run is two Vineflower passes: first the standalone switch table classes (`SwitchTables`: a synthetic
+   top-level class holding a `static final synthetic int[]`, which only the flattened Feather versions have), then
+   everything else. Vineflower rebuilds an enum switch while processing the class that switches, from the table
+   class's processed code, so in one pass the result depended on which thread got there first. Two passes make
+   the output the same at any thread count, in a full decompile and in a selective one. The output goes
+   to the store (`decompile/store`, on disk under `work/decompile-cache/`, in memory with `-PnoCache`).
+5. **Write** (`pipeline/SourceTree`). Each version is assembled from the store into `sources/.<version>.partial`,
+   swapped into place, and given its `.mcsg-done`.
+
+Vineflower's `jad` variable renaming runs only where the jar has no local variable names of its own
+(`MappingTier.shipsLocalNames()`), so the real names in 26.1+ jars survive.
+
+**Exactness is proved, not argued.** `./gradlew verifySources -Pmc=<versions>` decompiles each version in one
+full, uncached Vineflower pass and compares every file byte for byte with `sources/<version>`, writing the full
+decompile of each differing file to `work/verify/<version>/`. Any difference means the plan misses an input, and
+the plan is fixed, never the comparison loosened. The companion rule and the two passes came out of exactly
+that: 1.7.2 to 1.8.1 differed on enum switches, and the full decompile itself gave different output at 1 and 32
+threads until the switch tables were processed first.
 
 Code under `src/main/java/com/deathmotion/mcsources/`:
 
-- `cli/`: `Main`, the `list | one | all | ide | diff` entry point, version selection, progress output.
-- `config/`: `GeneratorConfig` (paths and switches), `RunOptions` (parallelism, heap, selection, sized to RAM and
-  cores), `GeneratorProperties` (reads the `mcsg.*` system properties the Gradle tasks pass), `Eula`.
-- `manifest/`: `VersionManifest`, `MinecraftVersion` (Mojang's piston manifest and cached per-version metadata).
-- `mapping/`: `MappingResolver` (tier selection and loading), `MappingTier`, `ResolvedMappings`, `MappingPlan`,
-  `MappingArtifact`.
-- `mapping/parchment/`: `ParchmentResolver` (exact release, else the nearest release in the same minor line),
-  `ParchmentData` (parsed names and javadocs).
-- `download/`: `Downloader` (HTTP with retries, SHA-1 checks, one writer per file), `LibraryDownloader`
-  (decompiler classpath).
-- `remap/`: `JarRemapper` (tiny-remapper wrapper).
-- `jar/`: `ServerBundle`, `MinecraftClassFilter`, `JarAssembler`, `ParameterAnnotationFixer`,
-  `ParameterNameInjector`.
-- `decompile/`: `VineflowerDecompiler` (launches the worker, passes libraries in a file so Windows' command line
-  limit never applies), `VineflowerWorker`, `VineflowerOptions` (the output-affecting options, shared by the worker
-  and the cache key), `DecompileSettings`, `JavadocSource` with `ParchmentJavadocSource` and `TinyJavadocSource`,
-  `JavadocSourceProvider`.
-- `decompile/cache/`: the content-addressed decompile cache, **on by default** (`-PnoCache` turns it off).
-  `ClassEntry`, `JarIndex`, `JavadocDigest`, `DecompileCache`, `CachedDecompile`. A key covers the class and its
-  inner classes, the javadocs that would be injected, the bytecode of every supertype, the Vineflower jar and
-  options. The output is not byte for byte identical to an uncached decompile: a freshly decompiled class that
-  references a cached class's nested type imports it by simple name instead of qualifying it, because cached
-  classes sit on the classpath rather than in the decompile set (Vineflower's `ImportCollector.getShortName`).
-- `pipeline/`: `SourceGenerator` (per-version orchestration, `OUTPUT_REVISION`), `VersionJars` (download,
-  unwrap, remap, merge, shared with diffing), `Phase`, `ProgressTracker`, `GenerationResult`,
-  `GenerationOutcome`, `GenerationSummary`.
-- `diff/`: `VersionDiff` (orchestration), `ClassIndex`, `ClassShape`, `InstructionText` (normalised instruction
-  text with lambdas folded in), `JarComparison` and `MemberChange`, `ResourceIndex`, `ResourceComparison`,
-  `TextDelta`, `ServerReports` (runs `net.minecraft.data.Main --reports`), `ReportTables`, `SourceComparison`,
-  `DiffReport`.
-- `ide/`: `IdeWorkspace` (the per-version Gradle project under `workspace/`).
-- `util/`: `PathUtils`, `Hashing`.
+- `cli/`: `Main` (`list | one | all | ide | diff | verify`), `VersionSelection` (ids, ranges, comma lists,
+  `-Pfrom`/`-Pto`/`-Plimit`).
+- `config/`: `GeneratorConfig` (paths and switches), `RunOptions` (parallelism sized to the heap and cores),
+  `GeneratorProperties` (the `mcsg.*` system properties the Gradle tasks pass), `Eula`.
+- `manifest/`: `VersionManifest`, `MinecraftVersion`.
+- `mapping/` and `mapping/parchment/`: tier selection and loading, Parchment (exact release, else the nearest
+  release in the same minor line).
+- `download/`: `Downloader` (retries, SHA-1 checks, one writer per file), `LibraryDownloader`.
+- `version/`: `VersionPreparer` (the prepare stage), `AssembledVersion`, `PreparedVersion`, `GameJars`,
+  `ServerBundle`, `JarRemapper`, `MergedClasses`, `MinecraftClassFilter`, and `transform/` (`ClassTransforms`,
+  `ParameterAnnotationFixer`, `ParameterNameInjector`).
+- `decompile/plan/`: `DecompileKeys`, `ClassGroup`, `ClassStructure`, `References`, `LibraryIndex`,
+  `JavadocDigest`, `VersionPlan`, `DecompileWork`.
+- `decompile/vineflower/`: `VineflowerRun` (the selective in-process run), `MemoryClassSource`,
+  `VineflowerOptions`, `JavadocSourceProvider`.
+- `decompile/javadoc/`: `JavadocSource`, `ParchmentJavadocSource`, `TinyJavadocSource`.
+- `decompile/store/`: `DecompileStore`, `DiskStore`, `MemoryStore`.
+- `pipeline/`: `Generation` (the driver), `Planning`, `Decompilation`, `SourceTree` (the output tree: what is
+  current, where a file goes, the marker), `PreparedVersions` (soft references, so a full run fits the heap and a
+  dropped version is prepared again), `VersionTasks` (parallel per-version work with failures recorded per
+  version), `StageClock`, `Verification`, `Console`, `GenerationResult`, `GenerationOutcome`, `GenerationSummary`.
+- `diff/`: `VersionDiff` and the comparison, unchanged in behaviour.
+- `ide/`: `IdeWorkspace`.
+- `classfile/`: `InternalNames` (top-level class and package of an internal name), `JarClasses` (class entries of
+  a jar).
+- `io/`: `Directories`, `Hashing`.
 
 ## Conventions
 
@@ -137,13 +163,17 @@ Code under `src/main/java/com/deathmotion/mcsources/`:
 - Dependency versions live in `gradle/libs.versions.toml` and are referenced through `libs.*`.
 - Generation is resumable. A version is finished when `sources/<version>/.mcsg-done` exists **and** carries the
   current `revision`. `generateAll` skips finished versions unless `-Pforce` is passed.
-- **Bump `SourceGenerator.OUTPUT_REVISION`** in any change that alters the generated sources (decompiler options,
+- **Bump `SourceTree.OUTPUT_REVISION`** in any change that alters the generated sources (decompiler options,
   bytecode transforms, mappings handling). The next `generateAll` then rebuilds every version made by the older
   revision. The decompile cache keeps that cheap for classes the change did not touch.
 - Anything that spawns a process or writes a path must work on Windows: no shell, no `/` assumptions in output
   that another tool parses, paths written into generated build scripts go through `IdeWorkspace.kotlinString`.
-- Verify a change against real output: regenerate one version of each affected tier with `-Pforce` and read the
-  result, for example `grep -rhoE "\((Class<[^>]*>|Boolean) (class|boolean)[,)]" sources/1.15.2` must find nothing.
+- **A refactor is proved by byte identical output.** Before the change, generate a fixed set covering every
+  tier into a side directory (`-PsourcesDir=work/compare/before -Pmc=1.8.9,1.12.2,1.14.4,1.16.5,1.20,1.20.1,1.21.4,26.2,26.3
+  -Pforce`) and hash it. After it, generate the same set into another directory and compare. A change meant to
+  move no output that moves a byte has a bug in it. Then run `verifySources` on the set.
+- A change that is meant to alter the output says so, bumps `OUTPUT_REVISION`, and is shown on real output, for
+  example `grep -rhoE "\((Class<[^>]*>|Boolean) (class|boolean)[,)]" sources/1.15.2` finding nothing.
 
 ## Commits
 

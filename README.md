@@ -1,15 +1,22 @@
 # Minecraft Sources Generator
 
 Generates readable, decompiled Minecraft: Java Edition source code for every release since 1.7.2, one directory
-per version under `sources/<version>/`. There is no upper bound: when Mojang ships a release, run `generateAll`
-again and it is picked up. Pure JVM, no Fabric, Loom or Forge toolchain needed.
+per version under `sources/<version>/`. There is no upper bound: when Mojang ships a release, ask for it by id and
+it is picked up. Pure JVM, no Fabric, Loom or Forge toolchain needed.
 
 ```bash
-./gradlew generateVersion -Pmc=1.21.8 -Peula=true    # one version
-./gradlew generateAll -Peula=true                    # every release, resumable
-./gradlew ide -Pmc=1.21.8 -Peula=true                # open it in IntelliJ with full navigation
+./gradlew generateVersion -Pmc=1.21.8 -Peula=true          # the version you work against
+./gradlew generateVersion -Pmc=1.20.1,1.21.8 -Peula=true   # or the few you support
+./gradlew ide -Pmc=1.21.8 -Peula=true                      # open it in IntelliJ with full navigation
 ./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true
 ```
+
+**Generate only the versions you need.** Decompiling is heavy work: a single modern version is about five
+minutes of CPU time, and every release since 1.7.2 is about 2.2 GB of sources. On a 32 core machine one version
+takes 20 to 40 seconds and all of them about five minutes. On a laptop with 8 cores, roughly a minute or two per
+version and the better part of half an hour for `generateAll`. Ask for the versions your project supports with
+`-Pmc` (a list, a range or both), and add more later: work already done is reused, so nothing is decompiled twice.
+`generateAll` is there for when you really want everything.
 
 On Windows PowerShell, quote the version arguments: `.\gradlew generateVersion "-Pmc=1.21.8" -Peula=true`.
 See [Windows](#windows).
@@ -53,14 +60,14 @@ revision, the class and file counts and the time:
 
 ```
 version=1.20
-revision=2
+revision=3
 tier=MOJMAP
 mappings=mojang official
 parchment=2023.09.03 (borrowed from 1.20.1)
-decompiler=vineflower-1.12.0.jar
+decompiler=vineflower-1.12.0.jar@1dfcfe974395734fa467ce620661c7623d05ba83670de0529b1fbd63ff548b9d
 classes=7436
 javaFiles=4786
-generatedAt=2026-11-01T16:24:09.701412998Z
+generatedAt=2026-11-01T17:33:29.394683106Z
 ```
 
 ## Names: mappings, parameters and locals
@@ -105,11 +112,12 @@ Run `./gradlew listVersions` to print every version and the tier chosen for it.
 ./gradlew listVersions
 ./gradlew listVersions -Psnapshots
 
-# One version, or an inclusive range generated in parallel
+# One version, an inclusive range, or a comma separated mix of both
 ./gradlew generateVersion -Pmc=1.16.5 -Peula=true
 ./gradlew generateVersion -Pmc=1.16.5-1.18 -Peula=true
+./gradlew generateVersion -Pmc=1.12.2,1.20-1.20.1,26.3 -Peula=true
 
-# Every release, in parallel, skipping versions that are already up to date
+# Every release, skipping versions that are already up to date (slow, see above)
 ./gradlew generateAll -Peula=true
 ./gradlew generateAll -Pfrom=1.20 -Pto=1.21.8 -Peula=true
 
@@ -118,18 +126,21 @@ Run `./gradlew listVersions` to print every version and the tier chosen for it.
 
 # Compare two versions class by class, member by member, with resources and server reports
 ./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true
+
+# Prove the generated sources equal a full, uncached decompile, byte for byte
+./gradlew verifySources -Pmc=1.21.4,26.3 -Peula=true
 ```
 
 A range (`-Pmc=1.16.5-1.18`) covers every release between the two endpoints, inclusive: here 1.16.5, 1.17,
 1.17.1 and 1.18. With `-Psnapshots`, snapshot and pre-release ids work as endpoints too, dashes included
 (`-Pmc=1.21-pre1-1.21`).
 
-`generateAll` and ranges print a line as each version finishes, and a status line when 15 seconds pass without
-one finishing:
+A run prints one line per version and stage, then a summary with the time each stage took:
 
 ```
-[progress] 42/88 (47%) 1.19.4 done in 61s, 250s elapsed, ~273s remaining
-[status] 265s elapsed, 42/88 done, 6 running | remapping x1, decompiling x5
+[prepare] 42/88 1.19.4 in 12.3s
+[plan] 160123 unique classes, 0 already decompiled, 160123 to decompile in 88 run(s)
+[decompile] 7/88 1.21.4, 2140 classes in 9.8s
 ```
 
 The run exits with a non-zero code when any version failed, and the summary lists each failure with its cause.
@@ -211,39 +222,52 @@ Switches such as `-Pforce` work bare or as `=true`.
 
 | Flag             | Tasks              | Meaning |
 |------------------|--------------------|---------|
-| `-Peula=true`    | generate, ide, diff | Accept the Minecraft EULA |
-| `-Pmc=<v>`       | generateVersion, ide | The version, or `<from>-<to>` for `generateVersion` |
+| `-Peula=true`    | generate, ide, diff, verify | Accept the Minecraft EULA |
+| `-Pmc=<v>`       | generateVersion, ide, verifySources | A version, a `<from>-<to>` range, or a comma separated list of both |
 | `-Pold=<v>` `-Pnew=<v>` | diffVersions | The two versions to compare |
 | `-Pforce`        | generate           | Rebuild even when the version is up to date |
 | `-Pfrom=<v>` `-Pto=<v>` | generateAll | Inclusive bounds of the selection |
 | `-Plimit=N`      | generateAll        | Only the first N versions of the selection |
 | `-Psnapshots`    | all                | Include snapshots, pre-releases and release candidates |
-| `-Pjobs=N`       | generate           | Versions decompiled in parallel. Default: cores / 4, capped by memory and at 8 |
-| `-PvfThreads=N`  | generate           | Vineflower threads per version. Default: cores / jobs |
-| `-PvfHeap=4g`    | generate           | Heap of each Vineflower process. Default `4g` |
-| `-PnoCache`      | generate           | Decompile without the cache, for canonical output (see below) |
+| `-Pjobs=N`       | generate           | Vineflower runs at once. Default: cores / 8, bounded by the heap |
+| `-PvfThreads=N`  | generate, verify   | Threads per Vineflower run. Default: cores / jobs |
+| `-PmaxHeap=24g`  | all                | Heap of the generator. Default: half the machine's memory |
+| `-PsourcesDir=<dir>` | all            | Write somewhere other than `sources/` |
+| `-PnoCache`      | generate           | Keep decompiled classes in memory for this run only |
 | `-PresetCache`   | generate           | Delete the decompile cache first |
-| `-PkeepWork`     | generate           | Keep the per-version scratch directory `work/tmp/<v>/` |
 | `-PnoReports`    | diffVersions       | Skip the server data generator |
 
-### The decompile cache
+### Speed, and why the output is exact
 
-Decompiled classes are stored by content and reused across versions and runs, so a class that did not change
-between releases is decompiled once. The key covers the class and its inner classes, the javadocs that would be
-injected, the bytecode of every supertype, and the Vineflower version and options. It is on by default: a full
-`generateAll` gets faster as it goes, and adding a new release decompiles little more than what changed.
+Decompiling is almost all of the cost: a modern version is about 290 CPU seconds of Vineflower. So the generator
+never decompiles the same class twice, and does it without changing a byte of the output.
 
-The trade-off: the output is not byte for byte identical to an uncached decompile. A freshly decompiled class that
-refers to a cached class's nested type writes an import and the simple name (`Mutable`) instead of the qualified
-form (`BlockPos.Mutable`), because cached classes sit on the classpath rather than in the decompile set. The code
-stays equivalent and navigable. Pass `-PnoCache` for a canonical decompile and `-PresetCache` to clear the cache.
+Every top-level class gets a key covering everything its decompiled text depends on: its bytecode and inner
+classes, the javadocs that would be injected, the structure of every class it references and of their supertypes
+and outer classes, the class names in its package, and the Vineflower build and options. Across all releases
+since 1.7.2, about 56% of the 302,000 top-level classes are unique by that key. Each unique key is decompiled
+once, by one version, in a Vineflower run that holds that whole version as its context, so imports, nested names
+and type inference come out exactly as in a full decompile. The results go to `work/decompile-cache/` and every
+version is written from there. A later run, a new release or an output revision bump decompiles only what changed.
+
+On a 32 core machine a cold `generateAll` of 84 releases takes about five minutes, where decompiling every
+version separately took nine to ten.
+
+`./gradlew verifySources -Pmc=<versions>` is the proof: it decompiles each version again in one full, uncached
+pass and compares every file byte for byte with `sources/<version>`, and writes the full decompile of any file
+that differs to `work/verify/<version>/`. All 84 releases verify identical.
+
+Vineflower on its own is not deterministic for 1.7.2 to 1.8.1: their mappings make enum switch tables separate
+classes, and whether a switch comes out rebuilt depended on thread timing. The generator decompiles those table
+classes in a first pass, so these versions now come out the same on every run and every machine.
 
 ### Memory and parallelism
 
-`generateAll` runs `jobs` versions at once, each Vineflower process using `vfThreads` threads and up to
-`vfHeap` of memory. Remapping runs inside the Gradle-launched JVM (up to 8 GB). The default job count fits both
-the core count and the machine's physical memory (about `vfHeap` + 1.5 GB per job, with 4 GB left over). Lower
-`-Pjobs` or `-PvfHeap` if the machine still runs short. A single version gets every core.
+Everything runs in the one JVM Gradle starts. It prepares several versions at once (download, remap, merge,
+transform, all in memory), then runs `jobs` Vineflower passes at once with `vfThreads` threads each. Prepared
+versions are held through soft references, so on a smaller heap the JVM drops them and they are prepared again
+when needed rather than running out of memory. If a run still fails, its classes are handed to another version
+that contains them. Lower `-Pjobs` or raise `-PmaxHeap` if a machine runs short.
 
 ## Windows
 
@@ -266,30 +290,23 @@ Everything runs on Windows. Use `.\gradlew` (or `gradlew`) instead of `./gradlew
 
 ## How it works
 
-For each version the generator:
+A run has five stages:
 
-1. Reads Mojang's version manifest and the version's metadata (cached under `work/cache/`).
-2. Picks the mapping tier and downloads the mappings. On Mojmap it also resolves Parchment.
-3. Downloads `client.jar` and `server.jar`, checks them against the SHA-1 in the metadata, and unwraps the 1.18+
-   server bundler to reach the real server jar. Libraries are downloaded once into `work/libs/` and checked the
-   same way.
-4. Remaps client and server separately to named with
-   [tiny-remapper](https://github.com/FabricMC/tiny-remapper) and [mapping-io](https://github.com/FabricMC/mapping-io).
-   Mojang's ProGuard files are converted on the fly, Ornithe uses its `official` to `named` `mergedv2`. On 26.1+
-   this step is a copy.
-5. Merges client and server, keeping only Minecraft's classes.
-6. Realigns parameter annotations on enum and inner-class constructors with ASM, on every version.
-7. On Mojmap, writes parameter names into the merged jar with ASM: Parchment where it has them, otherwise type
-   derived. Feather versions already carry theirs through the remap.
-8. Decompiles with Vineflower in a separate JVM, with the version's libraries as context, javadocs injected by
-   the decompiler (Parchment on Mojmap, Feather on legacy), and the decompiler's variable renaming only where
-   the jar has no names of its own.
-9. Moves the result into `sources/<version>/` and writes `.mcsg-done`.
+1. **Select** the versions whose `.mcsg-done` is missing or from an older output revision.
+2. **Prepare** each version in memory: Mojang's metadata (cached under `work/cache/`), the mapping tier and
+   mappings, Parchment on Mojmap, `client.jar` and `server.jar` downloaded once into `work/downloads/<version>/`
+   and checked against Mojang's SHA-1 (the 1.18+ server bundler unwrapped), libraries into `work/libs/`.
+   Client and server are remapped to named with [tiny-remapper](https://github.com/FabricMC/tiny-remapper) and
+   [mapping-io](https://github.com/FabricMC/mapping-io) straight into memory, merged client first keeping only
+   Minecraft's classes, then parameter annotations are realigned and, on Mojmap, parameter names written.
+3. **Plan**: key every class and hand each key that is not cached to one version.
+4. **Decompile** with Vineflower in process: one run per version that has work, each skipping the classes it
+   was not handed, javadocs injected by the decompiler and its variable renaming only where the jar has no
+   names of its own.
+5. **Write** each version from the cache into `sources/<version>/`, then its `.mcsg-done`.
 
-The game jars and mappings are downloaded to the per-version scratch directory `work/tmp/<version>/`, deleted
-when the version finishes, so they do not pile up (about 100 MB per modern version). Version metadata, libraries
-and the decompile cache persist under `work/`. Deleting `work/` is always safe: it only costs re-downloading and
-re-decompiling.
+`work/` holds downloads (about 100 MB per modern version), libraries, the decompile cache and logs. Deleting it
+is always safe: it only costs downloading and decompiling again.
 
 ## Requirements
 
@@ -297,46 +314,50 @@ re-decompiling.
   none is installed.
 - Network access to Mojang (piston-meta, piston-data, libraries.minecraft.net), Maven Central,
   maven.fabricmc.net, maven.ornithemc.net and maven.parchmentmc.org.
-- Disk: about 2.2 GB for every version's sources, plus about 2 GB under `work/` for libraries and the decompile
-  cache.
-- Memory: 8 GB is enough for one version at a time (`-Pjobs=1`). The defaults scale up from there.
+- Disk: about 2.2 GB for every version's sources, plus about 7 GB under `work/` for every version's downloads,
+  the libraries and the decompile cache.
+- Memory: `-PmaxHeap=8g -Pjobs=1` is enough for one version at a time. The defaults scale up from there.
 
 ## Troubleshooting
 
 - **`Task '.19.4' not found`**: PowerShell split the version argument. Quote it, see [Windows](#windows).
 - **`Minecraft version 'x' is not in Mojang's version manifest`**: check the id with `./gradlew listVersions`.
   Snapshots need `-Psnapshots`.
-- **A version failed**: the summary prints the cause. Decompiler output goes to `work/tmp/<version>/vineflower.log`,
-  kept on failure. `-PkeepWork` keeps the scratch directory on success too.
-- **Out of memory, or the machine swaps**: lower `-Pjobs`, then `-PvfHeap`.
+- **A version failed**: the summary prints the cause. Vineflower's warnings for a run are in
+  `work/logs/<version>.log`.
+- **Out of memory, or the machine swaps**: lower `-Pjobs`, or set `-PmaxHeap` to what the machine can spare.
 - **`Could not delete …`**: a file under `sources/` or `work/` is open in another program, often an IDE indexing
   `sources/`. Close it, or open only `workspace/`, and run again.
 
 ## Project layout
 
 ```
-build.gradle.kts                 tasks, dependencies from the version catalog, PowerShell argument repair
+build.gradle.kts                 tasks, heap sizing, dependencies from the version catalog, PowerShell repair
 settings.gradle.kts              toolchain resolver, PowerShell argument repair
 gradle/libs.versions.toml        dependency versions
 src/main/java/com/deathmotion/mcsources/
-├── cli/             Main                                    list, one, all, ide, diff
+├── cli/             Main, VersionSelection                  list, one, all, ide, diff, verify
 ├── config/          GeneratorConfig, RunOptions, GeneratorProperties, Eula
 ├── manifest/        VersionManifest, MinecraftVersion       Mojang manifest and metadata
 ├── mapping/         MappingResolver, MappingTier, ResolvedMappings, MappingPlan, MappingArtifact
 │   └── parchment/   ParchmentResolver, ParchmentData        Parchment names and javadocs
 ├── download/        Downloader, LibraryDownloader           HTTP, SHA-1 checks, libraries
-├── remap/           JarRemapper                             tiny-remapper wrapper
-├── jar/             ServerBundle, MinecraftClassFilter, JarAssembler,
-│                    ParameterAnnotationFixer, ParameterNameInjector
-├── decompile/       VineflowerDecompiler, VineflowerWorker, VineflowerOptions, DecompileSettings,
-│   │                JavadocSource, ParchmentJavadocSource, TinyJavadocSource, JavadocSourceProvider
-│   └── cache/       DecompileCache, CachedDecompile, JarIndex, ClassEntry, JavadocDigest
-├── pipeline/        SourceGenerator, VersionJars, Phase, ProgressTracker,
-│                    GenerationResult, GenerationOutcome, GenerationSummary
+├── version/         VersionPreparer, AssembledVersion, PreparedVersion, GameJars, ServerBundle,
+│   │                JarRemapper, MergedClasses, MinecraftClassFilter      a version in memory
+│   └── transform/   ClassTransforms, ParameterAnnotationFixer, ParameterNameInjector
+├── decompile/
+│   ├── plan/        DecompileKeys, ClassGroup, ClassStructure, LibraryIndex, JavadocDigest,
+│   │                VersionPlan, DecompileWork               keys and who decompiles what
+│   ├── vineflower/  VineflowerRun, MemoryClassSource, VineflowerOptions, JavadocSourceProvider
+│   ├── javadoc/     JavadocSource, ParchmentJavadocSource, TinyJavadocSource
+│   └── store/       DecompileStore, DiskStore, MemoryStore
+├── pipeline/        Generation, Planning, Decompilation, SourceTree, PreparedVersions, VersionTasks,
+│                    StageClock, Verification, Console, GenerationResult, GenerationOutcome, GenerationSummary
 ├── diff/            VersionDiff, JarComparison, ClassShape, InstructionText, ResourceComparison,
 │                    ServerReports, ReportTables, SourceComparison, DiffReport, ...
 ├── ide/             IdeWorkspace                            the per-version IDE project
-└── util/            PathUtils, Hashing
+├── classfile/       InternalNames, JarClasses
+└── io/              Directories, Hashing
 ```
 
 Contributor and agent guidance is in [AGENTS.md](AGENTS.md).
