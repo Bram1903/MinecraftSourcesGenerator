@@ -20,13 +20,13 @@ public final class IdeWorkspace {
         boolean linked = linkSources(workspaceDir, sourcesDir);
         String sourceConfig = linked ? "" : """
                     java {
-                        setSrcDirs(listOf("%s"))
+                        setSrcDirs(listOf(%s))
                     }
-                """.formatted(sourcesDir.toAbsolutePath());
+                """.formatted(kotlinString(sourcesDir));
 
         StringBuilder files = new StringBuilder();
         for (Path library : libraries) {
-            files.append("        \"").append(library.toAbsolutePath()).append("\",\n");
+            files.append("        ").append(kotlinString(library)).append(",\n");
         }
 
         String build = """
@@ -54,6 +54,11 @@ public final class IdeWorkspace {
                 }
                 """.formatted(sourceConfig, files);
         Files.writeString(workspaceDir.resolve("build.gradle.kts"), build);
+    }
+
+    private static String kotlinString(Path path) {
+        String text = path.toAbsolutePath().toString().replace('\\', '/');
+        return "\"" + text.replace("\"", "\\\"").replace("$", "\\$") + "\"";
     }
 
     private static void copyGradleWrapper(Path projectRoot, Path workspaceDir) throws IOException {

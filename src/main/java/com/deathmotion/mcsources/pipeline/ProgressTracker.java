@@ -25,7 +25,7 @@ public final class ProgressTracker {
         for (Phase phase : Phase.values()) {
             Integer count = counts.get(phase);
             if (count != null) {
-                joiner.add(phase.label() + " ×" + count);
+                joiner.add(phase.label() + " x" + count);
             }
         }
         return joiner.toString();

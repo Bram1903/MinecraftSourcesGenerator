@@ -30,6 +30,35 @@ tasks.withType<JavaCompile>().configureEach {
 val sourcesDir = layout.projectDirectory.dir("sources")
 val workDir = layout.projectDirectory.dir("work")
 
+val versionPropertyNames = listOf("mc", "old", "new", "from", "to")
+
+@Suppress("UNCHECKED_CAST")
+val splitVersionFragments = gradle.extra["splitVersionFragments"] as List<String>
+
+val versionProperties: Map<String, String> = run {
+    val given = versionPropertyNames.mapNotNull { name -> (findProperty(name) as String?)?.let { name to it } }.toMap()
+    if (splitVersionFragments.isEmpty()) {
+        return@run given
+    }
+    val truncated = given.filterValues { it.all(Char::isDigit) }
+    if (splitVersionFragments.size != 1 || truncated.size != 1) {
+        throw GradleException(
+            "PowerShell split a version at its first dot, so Gradle received ${splitVersionFragments.joinToString()} " +
+                "as task names. Quote each -P argument that holds a version, for example:\n\n" +
+                "    ./gradlew generateVersion \"-Pmc=1.19.4\" -Peula=true\n" +
+                "    ./gradlew diffVersions \"-Pold=26.2\" \"-Pnew=26.3\" -Peula=true\n\n" +
+                "or run the command from cmd.exe, Git Bash or WSL, which pass it through unchanged."
+        )
+    }
+    val (name, head) = truncated.entries.single()
+    val repaired = head + splitVersionFragments.single()
+    logger.lifecycle("PowerShell split -P$name=$repaired at its first dot, reading it as $repaired. " +
+        "Quote the argument (\"-P$name=$repaired\") to avoid this.")
+    given + (name to repaired)
+}
+
+fun versionProperty(name: String): String = versionProperties[name] ?: "<unset>"
+
 fun JavaExec.configureGenerator() {
     group = "minecraft sources"
     mainClass = "com.deathmotion.mcsources.cli.Main"
@@ -38,9 +67,10 @@ fun JavaExec.configureGenerator() {
     systemProperty("mcsg.sourcesDir", sourcesDir.asFile.absolutePath)
     systemProperty("mcsg.workDir", workDir.asFile.absolutePath)
     systemProperty("mcsg.projectDir", layout.projectDirectory.asFile.absolutePath)
-    listOf("force", "from", "to", "limit", "jobs", "vfThreads", "snapshots", "keepWork", "vfHeap", "eula",
+    listOf("force", "limit", "jobs", "vfThreads", "snapshots", "keepWork", "vfHeap", "eula",
             "noCache", "resetCache", "noReports")
         .forEach { key -> (project.findProperty(key) as String?)?.let { systemProperty("mcsg.$key", it) } }
+    listOf("from", "to").forEach { key -> versionProperties[key]?.let { systemProperty("mcsg.$key", it) } }
 }
 
 tasks.register<JavaExec>("listVersions") {
@@ -52,7 +82,7 @@ tasks.register<JavaExec>("listVersions") {
 tasks.register<JavaExec>("generateVersion") {
     description = "Decompile one version or a from-to range. Usage: ./gradlew generateVersion -Pmc=1.16.5 (or -Pmc=1.16.5-1.18) -Peula=true"
     configureGenerator()
-    args("one", (project.findProperty("mc") as String?) ?: "<unset>")
+    args("one", versionProperty("mc"))
 }
 
 tasks.register<JavaExec>("generateAll") {
@@ -64,11 +94,11 @@ tasks.register<JavaExec>("generateAll") {
 tasks.register<JavaExec>("diffVersions") {
     description = "Compare two versions class by class and member by member, with resources, server reports and source diffs. Usage: ./gradlew diffVersions -Pold=26.2 -Pnew=26.3 -Peula=true"
     configureGenerator()
-    args("diff", (project.findProperty("old") as String?) ?: "<unset>", (project.findProperty("new") as String?) ?: "<unset>")
+    args("diff", versionProperty("old"), versionProperty("new"))
 }
 
 tasks.register<JavaExec>("ide") {
     description = "Build an IDE workspace for one version (generates it first if needed). Usage: ./gradlew ide -Pmc=26.2"
     configureGenerator()
-    args("ide", (project.findProperty("mc") as String?) ?: "<unset>")
+    args("ide", versionProperty("mc"))
 }
