@@ -23,11 +23,11 @@ public record VersionJars(Path client, Path serverBundle, Path server, Path merg
         List<Path> libraries = LibraryDownloader.resolve(metadata, config.librariesDir());
         JsonObject downloads = metadata.getAsJsonObject("downloads");
 
-        Path clientJar = Downloader.download(url(downloads, "client"), scratch.resolve("client.jar"));
+        Path clientJar = download(downloads, "client", scratch.resolve("client.jar"));
         Path serverBundle = null;
         Path serverJar = null;
         if (downloads.has("server")) {
-            serverBundle = Downloader.download(url(downloads, "server"), scratch.resolve("server.jar"));
+            serverBundle = download(downloads, "server", scratch.resolve("server.jar"));
             serverJar = ServerBundle.extractServerJar(serverBundle, scratch.resolve("server-extracted.jar"));
         }
 
@@ -47,7 +47,9 @@ public record VersionJars(Path client, Path serverBundle, Path server, Path merg
         return new VersionJars(clientNamed, serverBundle, serverNamed, merged, classes, libraries);
     }
 
-    private static String url(JsonObject downloads, String key) {
-        return downloads.getAsJsonObject(key).get("url").getAsString();
+    private static Path download(JsonObject downloads, String key, Path destination) throws IOException {
+        JsonObject artifact = downloads.getAsJsonObject(key);
+        String sha1 = artifact.has("sha1") ? artifact.get("sha1").getAsString() : null;
+        return Downloader.download(artifact.get("url").getAsString(), destination, sha1);
     }
 }

@@ -56,12 +56,8 @@ public final class MappingResolver {
     private static ResolvedMappings resolveMojang(JsonObject metadata, MappingPlan plan, Path workDir)
             throws IOException {
         JsonObject downloads = metadata.getAsJsonObject("downloads");
-        Path clientProguard = Downloader.download(
-                downloads.getAsJsonObject("client_mappings").get("url").getAsString(),
-                workDir.resolve("client_mappings.txt"));
-        Path serverProguard = Downloader.download(
-                downloads.getAsJsonObject("server_mappings").get("url").getAsString(),
-                workDir.resolve("server_mappings.txt"));
+        Path clientProguard = downloadListed(downloads, "client_mappings", workDir.resolve("client_mappings.txt"));
+        Path serverProguard = downloadListed(downloads, "server_mappings", workDir.resolve("server_mappings.txt"));
 
         MemoryMappingTree clientTree = readProguardAsObfuscatedSource(clientProguard);
         MemoryMappingTree serverTree = readProguardAsObfuscatedSource(serverProguard);
@@ -71,6 +67,12 @@ public final class MappingResolver {
         collectNamedClasses(serverTree, namedClasses);
 
         return new ResolvedMappings(MappingTier.MOJMAP, plan.detail(), clientTree, serverTree, namedClasses, null);
+    }
+
+    private static Path downloadListed(JsonObject downloads, String key, Path destination) throws IOException {
+        JsonObject artifact = downloads.getAsJsonObject(key);
+        String sha1 = artifact.has("sha1") ? artifact.get("sha1").getAsString() : null;
+        return Downloader.download(artifact.get("url").getAsString(), destination, sha1);
     }
 
     private static ResolvedMappings resolveMergedV2(MappingPlan plan, Path workDir) throws IOException {
@@ -115,13 +117,16 @@ public final class MappingResolver {
     private static MappingArtifact locateMergedV2(String repository, String groupPath, String artifact,
                                                   String versionId, MappingTier tier) throws IOException {
         String metadataUrl = repository + "/" + groupPath + "/maven-metadata.xml";
-        String xml = METADATA_CACHE.computeIfAbsent(metadataUrl, url -> {
+        String xml = METADATA_CACHE.get(metadataUrl);
+        if (xml == null) {
             try {
-                return Downloader.getString(url);
+                xml = Downloader.getString(metadataUrl);
             } catch (IOException e) {
-                return "";
+                throw new IOException("Cannot tell whether " + versionId + " needs Ornithe Feather mappings, "
+                        + "because " + metadataUrl + " could not be read", e);
             }
-        });
+            METADATA_CACHE.put(metadataUrl, xml);
+        }
 
         String prefix = versionId + "+build.";
         String best = null;

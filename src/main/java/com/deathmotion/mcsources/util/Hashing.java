@@ -11,8 +11,16 @@ public final class Hashing {
     }
 
     public static MessageDigest newSha256() {
+        return digest("SHA-256");
+    }
+
+    public static MessageDigest newSha1() {
+        return digest("SHA-1");
+    }
+
+    private static MessageDigest digest(String algorithm) {
         try {
-            return MessageDigest.getInstance("SHA-256");
+            return MessageDigest.getInstance(algorithm);
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

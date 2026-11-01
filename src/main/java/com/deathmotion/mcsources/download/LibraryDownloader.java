@@ -29,12 +29,14 @@ public final class LibraryDownloader {
 
             String relativePath = null;
             String url = null;
+            String sha1 = null;
             if (library.has("downloads")) {
                 JsonObject downloads = library.getAsJsonObject("downloads");
                 if (downloads.has("artifact")) {
                     JsonObject artifact = downloads.getAsJsonObject("artifact");
                     relativePath = artifact.has("path") ? artifact.get("path").getAsString() : null;
                     url = artifact.has("url") ? artifact.get("url").getAsString() : null;
+                    sha1 = artifact.has("sha1") ? artifact.get("sha1").getAsString() : null;
                 }
             }
             if ((relativePath == null || url == null || url.isEmpty()) && !name.isEmpty()) {
@@ -47,9 +49,15 @@ public final class LibraryDownloader {
                 continue;
             }
 
+            Path destination = librariesDir.resolve(relativePath);
+            if (resolved.contains(destination)) {
+                continue;
+            }
             try {
-                resolved.add(Downloader.download(url, librariesDir.resolve(relativePath)));
-            } catch (IOException ignored) {
+                resolved.add(Downloader.download(url, destination, sha1));
+            } catch (IOException e) {
+                System.err.println("[libraries] skipped " + name + ", the decompiler will lack its types: "
+                        + e.getMessage());
             }
         }
         return resolved;
