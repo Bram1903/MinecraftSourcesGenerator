@@ -146,10 +146,12 @@ Code under `src/main/java/com/deathmotion/mcsources/`:
   `VineflowerOptions`, `JavadocSourceProvider`.
 - `decompile/javadoc/`: `JavadocSource`, `ParchmentJavadocSource`, `TinyJavadocSource`.
 - `decompile/store/`: `DecompileStore`, `DiskStore`, `MemoryStore`.
-- `pipeline/`: `Generation` (the driver), `Planning`, `Decompilation`, `SourceTree` (the output tree: what is
-  current, where a file goes, the marker), `PreparedVersions` (soft references, so a full run fits the heap and a
-  dropped version is prepared again), `VersionTasks` (parallel per-version work with failures recorded per
-  version), `StageClock`, `Verification`, `Console`, `GenerationResult`, `GenerationOutcome`, `GenerationSummary`.
+- `pipeline/`: `Generation` (the driver), `Verification` (the `verifySources` entry point), `SourceTree` (the
+  output tree: what is current, where a file goes, the marker), `Console`, `GenerationResult`,
+  `GenerationOutcome`, `GenerationSummary`.
+  - `pipeline/generation/`: the stages only `Generation` runs. `Planning`, `Decompilation`, `PreparedVersions`
+    (soft references, so a full run fits the heap and a dropped version is prepared again), `VersionTasks`
+    (parallel per-version work with failures recorded per version), `StageClock`.
 - `diff/`: `VersionDiff` (the entry point, sequences one comparison), `DiffReport` (writes `diffs/<old>..<new>/`),
   `SourceComparison` (decompiled diffs and the text only noise count), `TextDelta` (unified diffs and JSON
   flattened to lines, shared by everything below).

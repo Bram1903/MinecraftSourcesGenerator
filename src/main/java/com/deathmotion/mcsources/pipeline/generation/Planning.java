@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.pipeline;
+package com.deathmotion.mcsources.pipeline.generation;
 
 import com.deathmotion.mcsources.decompile.plan.DecompileKeys;
 import com.deathmotion.mcsources.decompile.plan.LibraryIndex;
@@ -11,11 +11,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
-final class Planning {
+public final class Planning {
     private Planning() {
     }
 
-    static List<VersionPlan> plan(PreparedVersions prepared, int jobs, Map<String, String> failures)
+    public static List<VersionPlan> plan(PreparedVersions prepared, int jobs, Map<String, String> failures)
             throws IOException {
         Map<String, VersionPlan> plans = new ConcurrentHashMap<>();
         try (LibraryIndex libraries = new LibraryIndex()) {

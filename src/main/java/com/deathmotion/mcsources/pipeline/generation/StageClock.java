@@ -1,14 +1,14 @@
-package com.deathmotion.mcsources.pipeline;
+package com.deathmotion.mcsources.pipeline.generation;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-final class StageClock {
+public final class StageClock {
     private final long start = System.nanoTime();
     private final Map<String, Long> stages = new LinkedHashMap<>();
 
-    <T> T time(String stage, Stage<T> work) throws IOException {
+    public <T> T time(String stage, Stage<T> work) throws IOException {
         long begin = System.nanoTime();
         try {
             return work.run();
@@ -17,28 +17,28 @@ final class StageClock {
         }
     }
 
-    void time(String stage, VoidStage work) throws IOException {
+    public void time(String stage, VoidStage work) throws IOException {
         time(stage, () -> {
             work.run();
             return null;
         });
     }
 
-    Map<String, Long> stages() {
+    public Map<String, Long> stages() {
         return stages;
     }
 
-    long elapsed() {
+    public long elapsed() {
         return System.nanoTime() - start;
     }
 
     @FunctionalInterface
-    interface Stage<T> {
+    public interface Stage<T> {
         T run() throws IOException;
     }
 
     @FunctionalInterface
-    interface VoidStage {
+    public interface VoidStage {
         void run() throws IOException;
     }
 }

@@ -1,5 +1,6 @@
-package com.deathmotion.mcsources.pipeline;
+package com.deathmotion.mcsources.pipeline.generation;
 
+import com.deathmotion.mcsources.pipeline.Console;
 import com.deathmotion.mcsources.decompile.plan.DecompileWork;
 import com.deathmotion.mcsources.decompile.plan.VersionPlan;
 import com.deathmotion.mcsources.decompile.store.DecompileStore;
@@ -9,11 +10,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-final class Decompilation {
+public final class Decompilation {
     private Decompilation() {
     }
 
-    static void run(List<VersionPlan> plans, PreparedVersions prepared, DecompileStore store, int jobs, int threads,
+    public static void run(List<VersionPlan> plans, PreparedVersions prepared, DecompileStore store, int jobs, int threads,
                     Path logs, Map<String, String> failures) {
         boolean first = true;
         while (true) {

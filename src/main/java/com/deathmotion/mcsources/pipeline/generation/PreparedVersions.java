@@ -1,4 +1,4 @@
-package com.deathmotion.mcsources.pipeline;
+package com.deathmotion.mcsources.pipeline.generation;
 
 import com.deathmotion.mcsources.manifest.MinecraftVersion;
 import com.deathmotion.mcsources.version.PreparedVersion;
@@ -11,12 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-final class PreparedVersions {
+public final class PreparedVersions {
     private final VersionPreparer preparer;
     private final Map<String, MinecraftVersion> versions = new LinkedHashMap<>();
     private final Map<String, SoftReference<PreparedVersion>> prepared = new ConcurrentHashMap<>();
 
-    PreparedVersions(VersionPreparer preparer, List<MinecraftVersion> versions) {
+    public PreparedVersions(VersionPreparer preparer, List<MinecraftVersion> versions) {
         this.preparer = preparer;
         versions.forEach(version -> this.versions.put(version.id(), version));
     }

@@ -7,6 +7,10 @@ import com.deathmotion.mcsources.decompile.store.DecompileStore;
 import com.deathmotion.mcsources.io.Directories;
 import com.deathmotion.mcsources.manifest.MinecraftVersion;
 import com.deathmotion.mcsources.manifest.VersionManifest;
+import com.deathmotion.mcsources.pipeline.generation.Decompilation;
+import com.deathmotion.mcsources.pipeline.generation.Planning;
+import com.deathmotion.mcsources.pipeline.generation.PreparedVersions;
+import com.deathmotion.mcsources.pipeline.generation.StageClock;
 import com.deathmotion.mcsources.version.VersionPreparer;
 
 import java.io.IOException;

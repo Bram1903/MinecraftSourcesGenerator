@@ -351,8 +351,9 @@ src/main/java/com/deathmotion/mcsources/
 │   ├── vineflower/  VineflowerRun, MemoryClassSource, VineflowerOptions, JavadocSourceProvider
 │   ├── javadoc/     JavadocSource, ParchmentJavadocSource, TinyJavadocSource
 │   └── store/       DecompileStore, DiskStore, MemoryStore
-├── pipeline/        Generation, Planning, Decompilation, SourceTree, PreparedVersions, VersionTasks,
-│                    StageClock, Verification, Console, GenerationResult, GenerationOutcome, GenerationSummary
+├── pipeline/        Generation, Verification, SourceTree, Console, GenerationResult, GenerationOutcome,
+│   │                GenerationSummary
+│   └── generation/  Planning, Decompilation, PreparedVersions, VersionTasks, StageClock
 ├── diff/            VersionDiff, DiffReport, SourceComparison, TextDelta      the version comparison
 │   ├── bytecode/    ClassIndex, ClassShape, InstructionText, JarComparison, MemberChange, ClassNames
 │   └── data/        ResourceIndex, ResourceComparison, ServerReports, ReportTables, ReportComparison

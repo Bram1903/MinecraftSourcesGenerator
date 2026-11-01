@@ -1,5 +1,6 @@
-package com.deathmotion.mcsources.pipeline;
+package com.deathmotion.mcsources.pipeline.generation;
 
+import com.deathmotion.mcsources.pipeline.Console;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;

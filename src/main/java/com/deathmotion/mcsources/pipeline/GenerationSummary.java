@@ -1,6 +1,7 @@
 package com.deathmotion.mcsources.pipeline;
 
 import com.deathmotion.mcsources.mapping.MappingTier;
+import com.deathmotion.mcsources.pipeline.generation.StageClock;
 
 import java.util.EnumMap;
 import java.util.List;
