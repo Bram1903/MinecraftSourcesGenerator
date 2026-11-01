@@ -7,6 +7,9 @@ import org.jetbrains.java.decompiler.main.extern.IFernflowerLogger;
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -19,9 +22,11 @@ public final class VineflowerWorker {
         File input = new File(args[1]);
         String threads = args[2];
         String javadocSpec = args[3];
+        boolean renameLocals = Boolean.parseBoolean(args[4]);
+        Path librariesFile = Path.of(args[5]);
 
         Map<String, Object> options = new HashMap<>(IFernflowerPreferences.getDefaults());
-        options.putAll(VineflowerOptions.output());
+        options.putAll(VineflowerOptions.output(renameLocals));
         options.put(IFernflowerPreferences.LOG_LEVEL, "warn");
         options.put(IFernflowerPreferences.THREADS, threads);
 
@@ -33,8 +38,10 @@ public final class VineflowerWorker {
         IFernflowerLogger logger = new PrintStreamLogger(System.out);
         try (FolderDecompiler decompiler = new FolderDecompiler(outputDir, options, logger)) {
             decompiler.addSource(input);
-            for (int i = 4; i < args.length; i++) {
-                decompiler.addLibrary(new File(args[i]));
+            for (String library : Files.readAllLines(librariesFile, StandardCharsets.UTF_8)) {
+                if (!library.isBlank()) {
+                    decompiler.addLibrary(new File(library));
+                }
             }
             decompiler.decompileContext();
         }

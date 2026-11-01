@@ -7,6 +7,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,12 +23,44 @@ public final class ParchmentResolver {
     private ParchmentResolver() {
     }
 
-    public static Optional<Resolved> resolve(String mcId, Path workDir) throws IOException {
+    public static Optional<Resolved> resolve(String mcId, List<String> releases, Path workDir) throws IOException {
+        for (String candidate : candidates(mcId, releases)) {
+            Optional<Resolved> resolved = resolveExact(candidate, workDir);
+            if (resolved.isPresent()) {
+                return resolved;
+            }
+        }
+        return Optional.empty();
+    }
+
+    static List<String> candidates(String mcId, List<String> releases) {
+        List<String> candidates = new ArrayList<>();
+        candidates.add(mcId);
+        int index = releases.indexOf(mcId);
+        if (index < 0) {
+            return candidates;
+        }
+        String line = minorLine(mcId);
+        for (int i = index + 1; i < releases.size() && minorLine(releases.get(i)).equals(line); i++) {
+            candidates.add(releases.get(i));
+        }
+        for (int i = index - 1; i >= 0 && minorLine(releases.get(i)).equals(line); i--) {
+            candidates.add(releases.get(i));
+        }
+        return candidates;
+    }
+
+    private static String minorLine(String versionId) {
+        String[] parts = versionId.split("\\.");
+        return parts.length < 2 ? versionId : parts[0] + "." + parts[1];
+    }
+
+    private static Optional<Resolved> resolveExact(String mcId, Path workDir) throws IOException {
         String metadataUrl = REPOSITORY + "/parchment-" + mcId + "/maven-metadata.xml";
         String xml;
         try {
             xml = Downloader.getString(metadataUrl);
-        } catch (IOException notPublished) {
+        } catch (Downloader.NotFoundException notPublished) {
             return Optional.empty();
         }
         String version = latestRelease(xml);
@@ -37,7 +71,7 @@ public final class ParchmentResolver {
         String url = REPOSITORY + "/parchment-" + mcId + "/" + version + "/" + fileName;
         Path zip = Downloader.download(url, workDir.resolve(fileName));
         Path json = extractParchmentJson(zip, workDir.resolve("parchment.json"));
-        return Optional.of(new Resolved(version, json));
+        return Optional.of(new Resolved(mcId, version, json));
     }
 
     private static String latestRelease(String metadataXml) {
@@ -69,6 +103,9 @@ public final class ParchmentResolver {
         return destination;
     }
 
-    public record Resolved(String version, Path json) {
+    public record Resolved(String minecraftVersion, String version, Path json) {
+        public String describe(String targetVersion) {
+            return minecraftVersion.equals(targetVersion) ? version : version + " (borrowed from " + minecraftVersion + ")";
+        }
     }
 }

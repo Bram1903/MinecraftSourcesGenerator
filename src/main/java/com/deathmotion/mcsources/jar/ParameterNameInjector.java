@@ -7,6 +7,8 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
+import javax.lang.model.SourceVersion;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +19,15 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 public final class ParameterNameInjector {
+    private static final Map<String, String> KEYWORD_REPLACEMENTS = Map.of(
+            "class", "clazz",
+            "boolean", "obool",
+            "byte", "obyte",
+            "short", "oshort",
+            "long", "olong",
+            "float", "f",
+            "double", "d");
+
     private ParameterNameInjector() {
     }
 
@@ -59,7 +70,7 @@ public final class ParameterNameInjector {
             List<ParameterNode> parameters = new ArrayList<>();
             LabelNode start = new LabelNode();
             LabelNode end = new LabelNode();
-            Set<String> used = new HashSet<>();
+            Set<String> used = new HashSet<>(parchmentNames.values());
             int localIndex = (method.access & Opcodes.ACC_STATIC) != 0 ? 0 : 1;
 
             for (Type argument : arguments) {
@@ -89,13 +100,20 @@ public final class ParameterNameInjector {
     }
 
     private static String generateName(Type type, Set<String> used) {
-        String base = baseName(type);
+        String base = legalIdentifier(baseName(type));
         String name = base;
         int suffix = 1;
         while (used.contains(name)) {
             name = base + (++suffix);
         }
         return name;
+    }
+
+    private static String legalIdentifier(String name) {
+        if (!SourceVersion.isKeyword(name)) {
+            return name;
+        }
+        return KEYWORD_REPLACEMENTS.getOrDefault(name, "o" + name);
     }
 
     private static String baseName(Type type) {

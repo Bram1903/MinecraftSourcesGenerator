@@ -37,24 +37,36 @@ public final class DecompileCache {
 
     public void put(String hash, Map<String, String> files) throws IOException {
         Path path = pathFor(hash);
+        if (Files.exists(path)) {
+            return;
+        }
         Files.createDirectories(path.getParent());
         Path temp = Files.createTempFile(path.getParent(), hash, ".tmp");
-        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(temp)))) {
-            out.writeInt(files.size());
-            for (Map.Entry<String, String> entry : files.entrySet()) {
-                out.writeUTF(entry.getKey());
-                byte[] content = entry.getValue().getBytes(StandardCharsets.UTF_8);
-                out.writeInt(content.length);
-                out.write(content);
-            }
-        }
         try {
-            Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
+            try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(temp)))) {
+                out.writeInt(files.size());
+                for (Map.Entry<String, String> entry : files.entrySet()) {
+                    out.writeUTF(entry.getKey());
+                    byte[] content = entry.getValue().getBytes(StandardCharsets.UTF_8);
+                    out.writeInt(content.length);
+                    out.write(content);
+                }
+            }
+            moveIntoPlace(temp, path);
+        } finally {
             Files.deleteIfExists(temp);
-            throw e;
+        }
+    }
+
+    private static void moveIntoPlace(Path temp, Path path) throws IOException {
+        try {
+            Files.move(temp, path, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(temp, path);
+        } catch (IOException e) {
+            if (!Files.exists(path)) {
+                throw e;
+            }
         }
     }
 

@@ -1,5 +1,6 @@
 package com.deathmotion.mcsources.decompile.cache;
 
+import com.deathmotion.mcsources.decompile.DecompileSettings;
 import com.deathmotion.mcsources.decompile.JavadocSource;
 import com.deathmotion.mcsources.decompile.VineflowerDecompiler;
 import com.deathmotion.mcsources.util.Hashing;
@@ -18,9 +19,10 @@ public final class CachedDecompile {
     }
 
     public static Stats run(VineflowerDecompiler decompiler, DecompileCache cache, String baseHash, Path mergedJar,
-                            Path stagingDir, List<Path> libraries, Path logFile, String javadocSpec, Path scratch)
+                            Path stagingDir, List<Path> libraries, Path logFile, DecompileSettings settings,
+                            Path scratch)
             throws IOException, InterruptedException {
-        JavadocSource javadocSource = JavadocSource.fromSpec(javadocSpec);
+        JavadocSource javadocSource = JavadocSource.fromSpec(settings.javadocSpec());
 
         List<ClassEntry> missEntries = new ArrayList<>();
         List<Hit> hits = new ArrayList<>();
@@ -78,7 +80,7 @@ public final class CachedDecompile {
         }
 
         if (!partial) {
-            decompiler.decompile(mergedJar, stagingDir, libraries, logFile, javadocSpec);
+            decompiler.decompile(mergedJar, stagingDir, libraries, logFile, settings);
             cacheBundles(stagingDir, allNameToHash, cache, null);
             return new Stats(0, missEntries.size());
         }
@@ -86,7 +88,7 @@ public final class CachedDecompile {
         Path freshDir = scratch.resolve("decompiled-fresh");
         List<Path> context = new ArrayList<>(libraries);
         context.add(existingJar);
-        decompiler.decompile(incompleteJar, freshDir, context, logFile, javadocSpec);
+        decompiler.decompile(incompleteJar, freshDir, context, logFile, settings);
         cacheBundles(freshDir, missNameToHash, cache, stagingDir);
         restoreHits(hits, stagingDir);
 

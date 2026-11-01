@@ -1,6 +1,7 @@
 package com.deathmotion.mcsources.pipeline;
 
 import com.deathmotion.mcsources.config.GeneratorConfig;
+import com.deathmotion.mcsources.decompile.DecompileSettings;
 import com.deathmotion.mcsources.decompile.VineflowerDecompiler;
 import com.deathmotion.mcsources.decompile.VineflowerOptions;
 import com.deathmotion.mcsources.decompile.cache.CachedDecompile;
@@ -28,20 +29,33 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 public final class SourceGenerator {
-    private static final String MARKER_FILE = ".mcsg-done";
+    public static final String MARKER_FILE = ".mcsg-done";
+    public static final int OUTPUT_REVISION = 2;
+
+    private static final String REVISION_KEY = "revision=";
 
     private final GeneratorConfig config;
     private final VersionManifest manifest;
     private final VineflowerDecompiler decompiler;
     private final DecompileCache decompileCache;
-    private final String decompileBaseHash;
 
     public SourceGenerator(GeneratorConfig config, VersionManifest manifest) {
         this.config = config;
         this.manifest = manifest;
         this.decompiler = new VineflowerDecompiler(config.vineflowerHeap(), config.decompilerThreads());
         this.decompileCache = config.cacheEnabled() ? new DecompileCache(config.decompileCacheDir()) : null;
-        this.decompileBaseHash = Hashing.sha256Hex(decompilerIdentity() + "\n" + VineflowerOptions.identity()
+    }
+
+    public static boolean isCurrent(Path versionDir) throws IOException {
+        Path marker = versionDir.resolve(MARKER_FILE);
+        if (!Files.exists(marker)) {
+            return false;
+        }
+        return Files.readAllLines(marker).contains(REVISION_KEY + OUTPUT_REVISION);
+    }
+
+    private static String decompileBaseHash(boolean renameLocals) {
+        return Hashing.sha256Hex(decompilerIdentity() + "\n" + VineflowerOptions.identity(renameLocals)
                 + "\ncache-format:" + DecompileCache.FORMAT);
     }
 
@@ -55,16 +69,20 @@ public final class SourceGenerator {
         return "vineflower";
     }
 
-    private static void writeMarker(Path marker, String id, ResolvedMappings mappings, int classes, int javaFiles)
-            throws IOException {
+    private static void writeMarker(Path marker, String id, ResolvedMappings mappings, String parchment, int classes,
+                                    int javaFiles) throws IOException {
         String content = """
                 version=%s
+                %s%d
                 tier=%s
                 mappings=%s
+                parchment=%s
+                decompiler=%s
                 classes=%d
                 javaFiles=%d
                 generatedAt=%s
-                """.formatted(id, mappings.tier(), mappings.detail(), classes, javaFiles, Instant.now());
+                """.formatted(id, REVISION_KEY, OUTPUT_REVISION, mappings.tier(), mappings.detail(), parchment,
+                decompilerIdentity(), classes, javaFiles, Instant.now());
         Files.writeString(marker, content);
     }
 
@@ -82,6 +100,14 @@ public final class SourceGenerator {
         return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
+    private static String describe(Throwable failure) {
+        StringBuilder builder = new StringBuilder(String.valueOf(failure));
+        for (Throwable cause = failure.getCause(); cause != null && cause != failure; cause = cause.getCause()) {
+            builder.append(" <- ").append(cause);
+        }
+        return builder.toString();
+    }
+
     private static void log(String id, String message) {
         System.out.println("[" + id + "] " + message);
     }
@@ -93,7 +119,7 @@ public final class SourceGenerator {
         Path marker = outputDir.resolve(MARKER_FILE);
 
         try {
-            if (!config.force() && Files.exists(marker)) {
+            if (!config.force() && isCurrent(outputDir)) {
                 return GenerationResult.skipped(id);
             }
 
@@ -107,10 +133,15 @@ public final class SourceGenerator {
             ResolvedMappings mappings = MappingResolver.resolve(metadata, id, scratch);
 
             Path parchmentJson = null;
+            String parchmentVersion = "none";
             if (mappings.tier() == MappingTier.MOJMAP) {
-                Optional<ParchmentResolver.Resolved> parchment = ParchmentResolver.resolve(id, scratch);
+                List<String> releases = manifest.versionsSinceBaseline(false).stream()
+                        .map(MinecraftVersion::id)
+                        .toList();
+                Optional<ParchmentResolver.Resolved> parchment = ParchmentResolver.resolve(id, releases, scratch);
                 if (parchment.isPresent()) {
                     parchmentJson = parchment.get().json();
+                    parchmentVersion = parchment.get().describe(id);
                 }
             }
 
@@ -127,14 +158,16 @@ public final class SourceGenerator {
             }
 
             onPhase.accept(Phase.DECOMPILE);
-            String javadocSpec = javadocSpec(parchmentJson, mappings.javadocTiny());
+            boolean renameLocals = !mappings.tier().shipsLocalNames();
+            DecompileSettings settings =
+                    new DecompileSettings(javadocSpec(parchmentJson, mappings.javadocTiny()), renameLocals);
             Path staging = scratch.resolve("decompiled");
             Path log = scratch.resolve("vineflower.log");
             if (decompileCache != null) {
-                CachedDecompile.run(decompiler, decompileCache, decompileBaseHash,
-                        merged, staging, libraries, log, javadocSpec, scratch);
+                CachedDecompile.run(decompiler, decompileCache, decompileBaseHash(renameLocals),
+                        merged, staging, libraries, log, settings, scratch);
             } else {
-                decompiler.decompile(merged, staging, libraries, log, javadocSpec);
+                decompiler.decompile(merged, staging, libraries, log, settings);
             }
 
             onPhase.accept(Phase.WRITE);
@@ -143,7 +176,7 @@ public final class SourceGenerator {
             Files.move(staging, outputDir);
             int javaFiles = PathUtils.countJavaFiles(outputDir);
 
-            writeMarker(marker, id, mappings, classes, javaFiles);
+            writeMarker(marker, id, mappings, parchmentVersion, classes, javaFiles);
 
             if (!config.keepWork()) {
                 PathUtils.deleteRecursively(scratch);
@@ -152,8 +185,8 @@ public final class SourceGenerator {
             long millis = elapsedMillis(start);
             return GenerationResult.generated(id, mappings.tier(), javaFiles, millis);
         } catch (Exception e) {
-            log(id, "failed: " + e);
-            return GenerationResult.failed(id, String.valueOf(e), elapsedMillis(start));
+            log(id, "failed: " + describe(e));
+            return GenerationResult.failed(id, describe(e), elapsedMillis(start));
         }
     }
 }
